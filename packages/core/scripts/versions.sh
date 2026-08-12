@@ -7,8 +7,9 @@ MAUDE_VERSION="3.5.1"
 MAUDE_URL="https://github.com/maude-lang/Maude/archive/refs/tags/Maude${MAUDE_VERSION}.tar.gz"
 MAUDE_DIR="Maude-Maude${MAUDE_VERSION}"
 
+# Fetched from the GNU mirror: gmplib.org blocks cloud/CI IP ranges.
 GMP_VERSION="6.3.0"
-GMP_URL="https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz"
+GMP_URL="https://ftp.gnu.org/gnu/gmp/gmp-${GMP_VERSION}.tar.xz"
 GMP_DIR="gmp-${GMP_VERSION}"
 
 BUDDY_VERSION="2.4"
