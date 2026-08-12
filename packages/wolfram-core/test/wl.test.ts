@@ -205,6 +205,31 @@ const cases: Array<[string, string, string]> = [
        ap(s('Count), ap(s('List), 1 :: s('a) :: 2 :: str("x") :: 3) :: ?h('n, 'Integer)))`,
     "ap(s('List), ap(s('List), 1 :: 2 :: 3) :: 3)",
   ],
+  [
+    "Alternatives expand to per-branch definitions",
+    `ap(s('SetDelayed),
+       ap(s('resp), ap(s('Alternatives), str("yes") :: str("y"))) :: str("affirmative")) ::
+     ap(s('SetDelayed), ap(s('resp), ? 'x) :: str("other")) ::
+     ap(s('List),
+       ap(s('resp), str("yes")) :: ap(s('resp), str("y")) :: ap(s('resp), str("no")))`,
+    'ap(s(\'List), str("affirmative") :: str("affirmative") :: str("other"))',
+  ],
+  [
+    "Alternatives of typed blanks bind per branch",
+    `ap(s('SetDelayed),
+       ap(s('num), ap(s('Alternatives), ?h('x, 'Integer) :: ?h('x, 'String))) :: s('x)) ::
+     ap(s('List), ap(s('num), 7) :: ap(s('num), str("s")) :: ap(s('num), s('sym)))`,
+    "ap(s('List), 7 :: str(\"s\") :: ap(s('num), s('sym)))",
+  ],
+  [
+    "nested Alternatives inside structure",
+    `ap(s('SetDelayed),
+       ap(s('pair), ap(s('List), ap(s('Alternatives), 1 :: 2) :: ? 'y)) :: s('y)) ::
+     ap(s('List),
+       ap(s('pair), ap(s('List), 1 :: str("a"))) ::
+       ap(s('pair), ap(s('List), 3 :: str("c"))))`,
+    'ap(s(\'List), str("a") :: ap(s(\'pair), ap(s(\'List), 3 :: str("c"))))',
+  ],
 ];
 
 describe("WL/M conformance", () => {

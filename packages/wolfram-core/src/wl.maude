@@ -301,8 +301,56 @@ fmod WL-EVAL is
       ap(s('Condition), Rh :: mkAnd(Cnd :: A)) if lenA(A) >= 1 .
   eq wrapCond(Rh, A) = ap(s('Condition), Rh :: mkAnd(A)) [owise] .
 
+  *** Alternatives[p1, p2, ...] expands into one definition per branch
+  *** cartesian across occurrences, sharing the rhs
+  sort WA .
+  sort ALs .
+  sort EL .
+  op w : ArgList -> WA [ctor] .
+  op nilAL : -> ALs [ctor] .
+  op _%%_ : WA ALs -> ALs [ctor gather (e E)] .
+  op nilEL : -> EL [ctor] .
+  op _%_ : Expr EL -> EL [ctor gather (e E)] .
+
+  var WAs WAs2 : ALs . var EL1 EL2 : EL . var WA1 : WA .
+
+  op xAltE : Expr -> EL .
+  op xAltAlts : ArgList -> EL .
+  op xAltA : ArgList -> ALs .
+  op catEL : EL EL -> EL .
+  op crossHA : EL ALs -> EL .
+  op crossEA : Expr ALs -> EL .
+  op consAll : Expr ALs -> ALs .
+  op catAL : ALs ALs -> ALs .
+
+  eq xAltE(ap(s('Alternatives), A)) = xAltAlts(A) .
+  eq xAltE(ap(H, A)) = crossHA(xAltE(H), xAltA(A)) [owise] .
+  eq xAltE(E) = E % nilEL [owise] .
+  eq xAltAlts(nilA) = nilEL .
+  eq xAltAlts(E :: A) = catEL(xAltE(E), xAltAlts(A)) .
+  eq catEL(nilEL, EL2) = EL2 .
+  eq catEL(E % EL1, EL2) = E % catEL(EL1, EL2) .
+  eq crossHA(nilEL, WAs) = nilEL .
+  eq crossHA(E % EL1, WAs) = catEL(crossEA(E, WAs), crossHA(EL1, WAs)) .
+  eq crossEA(E, nilAL) = nilEL .
+  eq crossEA(E, w(A) %% WAs) = ap(E, A) % crossEA(E, WAs) .
+  eq xAltA(nilA) = w(nilA) %% nilAL .
+  ceq xAltA(E :: A) = crossCons(xAltE(E), xAltA(A)) if true .
+  op crossCons : EL ALs -> ALs .
+  eq crossCons(nilEL, WAs) = nilAL .
+  eq crossCons(E % EL1, WAs) = catAL(consAll(E, WAs), crossCons(EL1, WAs)) .
+  eq consAll(E, nilAL) = nilAL .
+  eq consAll(E, w(A) %% WAs) = w(E :: A) %% consAll(E, WAs) .
+  eq catAL(nilAL, WAs) = WAs .
+  eq catAL(WA1 %% WAs, WAs2) = WA1 %% catAL(WAs, WAs2) .
+
   op addDef : St Expr Expr -> St .
-  ceq addDef(st(Ds, At, N), L, Rh)
+  eq addDef(S, L, Rh) = addDefs(S, xAltE(L), Rh) .
+  op addDefs : St EL Expr -> St .
+  eq addDefs(S, nilEL, Rh) = S .
+  eq addDefs(S, E % EL1, Rh) = addDefs(addDef1(S, E, Rh), EL1, Rh) .
+  op addDef1 : St Expr Expr -> St .
+  ceq addDef1(st(Ds, At, N), L, Rh)
     = st(insDef(delDef(Ds, P, condOf(wrapCond(Rh, Cs))), d(P, wrapCond(Rh, Cs))), At, N)
     if hp(L2, Cs) := hoistE(L) /\ P := compileP(L2) .
   var L2 : Expr . var Cs Cs1 Cs2 : ArgList .
