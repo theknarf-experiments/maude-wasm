@@ -198,6 +198,7 @@ endfm
 
 fmod WL-EVAL is
   protecting WL-META .
+  protecting CONVERSION .
 
   *** attribute table: a set of (symbol, attribute) pairs
   sorts SymAttr Attrs .
@@ -272,23 +273,45 @@ fmod WL-EVAL is
   *** hoist lhs-side Condition / PatternTest into an rhs Condition:
   *** f[x_ /; c] := r  and  f[x_?t] := r  both become pattern f[x_]
   *** with rhs Condition[r, ...]
-  sort HP .
-  op hp : ArgList ArgList -> HP [ctor] .    *** cleaned pattern, conditions
-  op hoistE : Expr -> HP .
-  op hoistA : ArgList -> HP .
-  eq hoistA(nilA) = hp(nilA, nilA) .
-  ceq hoistA(E :: A) = hp(E1 :: A1, Cs1 :: Cs2)
-    if hp(E1, Cs1) := hoistE(E) /\ hp(A1, Cs2) := hoistA(A) .
-  ceq hoistE(ap(s('Condition), E :: Cnd)) = hp(E1, Cs1 :: Cnd)
-    if hp(E1, Cs1) := hoistE(E) .
-  eq hoistE(ap(s('PatternTest), (? Q) :: E)) = hp(? Q, ap(E, s(Q))) .
-  eq hoistE(ap(s('PatternTest), ?h(Q, F) :: E)) = hp(?h(Q, F), ap(E, s(Q))) .
-  ceq hoistE(ap(H, A)) = hp(ap(H, A1), Cs1)
-    if not isPatOp(H) /\ hp(A1, Cs1) := hoistA(A) .
-  eq hoistE(E) = hp(E, nilA) [owise] .
+  op isGroundP : Term -> Bool .
+  eq isGroundP(T) = T :: GroundTerm .
+
+  sort HPC .
+  *** cleaned pattern, hoisted conditions, definition-time bindings,
+  *** fresh-name counter
+  op hpc : ArgList ArgList Bnds Nat -> HPC [ctor] .
+  op hoistE : Expr Nat -> HPC .
+  op hoistA : ArgList Nat -> HPC .
+  eq hoistA(nilA, N) = hpc(nilA, nilA, noBnds, N) .
+  ceq hoistA(E :: A, N) = hpc(E1 :: A1, Cs1 :: Cs2, B1 & B2, N2)
+    if hpc(E1, Cs1, B1, N1) := hoistE(E, N) /\
+       hpc(A1, Cs2, B2, N2) := hoistA(A, N1) .
+  ceq hoistE(ap(s('Condition), E :: Cnd), N) = hpc(E1, Cs1 :: Cnd, B1, N1)
+    if hpc(E1, Cs1, B1, N1) := hoistE(E, N) .
+  eq hoistE(ap(s('PatternTest), (? Q) :: E), N) = hpc(? Q, ap(E, s(Q)), noBnds, N) .
+  eq hoistE(ap(s('PatternTest), ?h(Q, F) :: E), N) = hpc(?h(Q, F), ap(E, s(Q)), noBnds, N) .
+  *** x : patt -- naming: blanks rename to x; Except gets a condition;
+  *** ground patterns bind at definition time
+  eq hoistE(ap(s('Pattern), s(Q) :: (? Q2)), N) = hpc(? Q, nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: (?? Q2)), N) = hpc(?? Q, nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ?h(Q2, F)), N) = hpc(?h(Q, F), nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ap(s('Except), E)), N)
+    = hpc(? Q, ap(s('Not), ap(s('MatchQ), s(Q) :: E)), noBnds, N) .
+  ceq hoistE(ap(s('Pattern), s(Q) :: E), N) = hpc(E1, Cs1, bnd(Q, E1) & B1, N1)
+    if hpc(E1, Cs1, B1, N1) := hoistE(E, N) /\ isGroundP(compileP(E1)) .
+  *** unnamed Except[c]: fresh blank + Not[MatchQ[...]] condition
+  eq hoistE(ap(s('Except), E), N)
+    = hpc(? qid("$exc" + string(N, 10)),
+          ap(s('Not), ap(s('MatchQ), s(qid("$exc" + string(N, 10))) :: E)),
+          noBnds, N + 1) .
+  ceq hoistE(ap(H, A), N) = hpc(ap(H, A1), Cs1, B1, N1)
+    if not isPatOp(H) /\ hpc(A1, Cs1, B1, N1) := hoistA(A, N) .
+  eq hoistE(E, N) = hpc(E, nilA, noBnds, N) [owise] .
   op isPatOp : Expr -> Bool .
   eq isPatOp(s('Condition)) = true .
   eq isPatOp(s('PatternTest)) = true .
+  eq isPatOp(s('Pattern)) = true .
+  eq isPatOp(s('Except)) = true .
   eq isPatOp(E) = false [owise] .
 
   op mkAnd : ArgList -> Expr .
@@ -351,9 +374,12 @@ fmod WL-EVAL is
   eq addDefs(S, E % EL1, Rh) = addDefs(addDef1(S, E, Rh), EL1, Rh) .
   op addDef1 : St Expr Expr -> St .
   ceq addDef1(st(Ds, At, N), L, Rh)
-    = st(insDef(delDef(Ds, P, condOf(wrapCond(Rh, Cs))), d(P, wrapCond(Rh, Cs))), At, N)
-    if hp(L2, Cs) := hoistE(L) /\ P := compileP(L2) .
+    = st(insDef(delDef(Ds, P, condOf(Rh2)), d(P, Rh2)), At, N)
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) /\
+       P := compileP(L2) /\
+       Rh2 := wrapCond(sbE(Rh, B), sbA(Cs, B)) .
   var L2 : Expr . var Cs Cs1 Cs2 : ArgList .
+  var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
 
   *** ---------------------------------------------------- evaluator
   op ev : St Expr -> R .

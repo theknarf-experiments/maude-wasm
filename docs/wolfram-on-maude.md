@@ -177,11 +177,17 @@ conformance table in `test/wl.test.ts` covers each item below.
 - [~] **2.3 Pattern constructs.** *Done:* `Alternatives` — expanded at
       definition time into one definition per branch (cartesian across
       occurrences), so each branch is a plain metaMatch pattern and
-      per-branch variable bindings come free. *Pending:* `Except`
-      (hoist to a `Not[MatchQ[...]]` condition with a fresh name),
-      `Repeated`, `PatternSequence`, `Optional`, `Longest`/`Shortest`,
-      and `Pattern` naming (`x : patt`). Gotcha recorded: a `(` as the
-      first token after `***` opens Maude's balanced block comment.
+      per-branch variable bindings come free. *Also done:* `Except`
+      (hoisted to a fresh-named blank plus `Not[MatchQ[...]]`, counter
+      threaded so multiple unnamed Excepts stay independent) and
+      `Pattern` naming — blank aliases rename the meta-variable, ground
+      patterns pre-bind into the rhs at definition time (which composes
+      with Alternatives expansion for free: `x : ("yes"|"y")` binds per
+      branch). *Pending:* `Repeated`, `PatternSequence`, `Optional`,
+      `Longest`/`Shortest`, naming of structured sub-patterns with
+      inner blanks. Gotchas recorded: a `(` as the first token after
+      `***` opens Maude's balanced block comment; ops must be declared
+      before the statements that use them.
 - [~] **2.4 Rule application operators.** *Done:* `Rule`,
       `RuleDelayed` (HoldRest), `ReplaceAll`, `ReplaceRepeated`
       (fixed-point with evaluation between passes). *Pending:* `Replace`

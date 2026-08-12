@@ -230,6 +230,29 @@ const cases: Array<[string, string, string]> = [
        ap(s('pair), ap(s('List), 3 :: str("c"))))`,
     'ap(s(\'List), str("a") :: ap(s(\'pair), ap(s(\'List), 3 :: str("c"))))',
   ],
+  [
+    "Pattern naming: alias, ground pre-binding, named alternatives",
+    `ap(s('SetDelayed), ap(s('g), ap(s('Pattern), s('x) :: ?h('y, 'Integer))) ::
+       ap(s('Times), s('x) :: 2)) ::
+     ap(s('SetDelayed), ap(s('f), ap(s('Pattern), s('x) :: 5)) :: ap(s('Plus), s('x) :: 1)) ::
+     ap(s('SetDelayed),
+       ap(s('resp), ap(s('Pattern), s('x) ::
+         ap(s('Alternatives), str("yes") :: str("y")))) :: s('x)) ::
+     ap(s('List), ap(s('g), 21) :: ap(s('f), 5) :: ap(s('resp), str("y")))`,
+    'ap(s(\'List), 42 :: 6 :: str("y"))',
+  ],
+  [
+    "Except: unnamed, named, and multiple independent",
+    `ap(s('SetDelayed), ap(s('h), ap(s('Except), 0)) :: str("nonzero")) ::
+     ap(s('SetDelayed), ap(s('h), ? 'x) :: str("zero")) ::
+     ap(s('SetDelayed), ap(s('inv), ap(s('Pattern), s('x) :: ap(s('Except), 0))) :: s('x)) ::
+     ap(s('SetDelayed),
+       ap(s('k), ap(s('Except), 1) :: ap(s('Except), 2)) :: str("ok")) ::
+     ap(s('List),
+       ap(s('h), 7) :: ap(s('h), 0) :: ap(s('inv), 5) ::
+       ap(s('k), 2 :: 1) :: ap(s('k), 1 :: 3))`,
+    'ap(s(\'List), str("nonzero") :: str("zero") :: 5 :: str("ok") :: ap(s(\'k), 1 :: 3))',
+  ],
 ];
 
 describe("WL/M conformance", () => {
