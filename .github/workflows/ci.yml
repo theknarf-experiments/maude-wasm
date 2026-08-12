@@ -14,6 +14,9 @@ jobs:
         with:
           install_args: node pnpm
       - run: pnpm install --frozen-lockfile
+      # The demo resolves maude-wasm's types from its dist/, so build the
+      # (pure-tsc) wrapper first.
+      - run: pnpm --filter maude-wasm build
       - run: pnpm lint
       - run: pnpm knip
       - run: pnpm typecheck
