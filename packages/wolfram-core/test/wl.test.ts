@@ -131,6 +131,26 @@ const cases: Array<[string, string, string]> = [
      ap(s('List), ap(s('f), 5) :: ap(s('f), 6))`,
     'ap(s(\'List), str("five") :: str("generic"))',
   ],
+  // -- phase 2: pattern language ---------------------------------------
+  [
+    "head-typed blanks dispatch by head",
+    `ap(s('SetDelayed), ap(s('f), ?h('x, 'Integer)) :: str("int")) ::
+     ap(s('SetDelayed), ap(s('f), ?h('x, 'String)) :: s('x)) ::
+     ap(s('SetDelayed), ap(s('f), ?h('x, 'List)) :: ap(s('Length), s('x))) ::
+     ap(s('SetDelayed), ap(s('f), ? 'x) :: str("other")) ::
+     ap(s('List),
+       ap(s('f), 5) ::
+       ap(s('f), str("hello")) ::
+       ap(s('f), ap(s('List), 1 :: 2 :: 3)) ::
+       ap(s('f), s('sym)))`,
+    'ap(s(\'List), str("int") :: str("hello") :: 3 :: str("other"))',
+  ],
+  [
+    "Symbol-typed blank binds the symbol",
+    `ap(s('SetDelayed), ap(s('g), ?h('x, 'Symbol)) :: ap(s('List), s('x) :: s('x))) ::
+     ap(s('g), s('a))`,
+    "ap(s('List), s('a) :: s('a))",
+  ],
 ];
 
 describe("WL/M conformance", () => {

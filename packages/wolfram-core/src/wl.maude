@@ -31,6 +31,7 @@ fmod WL-SYNTAX is
   op _::_ : ArgList ArgList -> ArgList [ctor assoc id: nilA prec 60] .
   op ?_ : Qid -> Expr [ctor prec 5] .      *** Blank[q]  (q_)
   op ??_ : Qid -> Expr [ctor prec 5] .     *** BlankNullSequence[q]  (q___)
+  op ?h : Qid Qid -> Expr [ctor] .         *** Blank[q, head]  (q_head)
 endfm
 
 fmod WL-BINDINGS is
@@ -73,6 +74,7 @@ fmod WL-ORDER is
   eq rank(str(Str)) = 1 .
   eq rank(s(Q)) = 2 .
   eq rank(? Q) = 3 .
+  eq rank(?h(Q, Q2)) = 3 .
   eq rank(?? Q) = 4 .
   eq rank(ap(H, A)) = 5 .
 
@@ -83,6 +85,7 @@ fmod WL-ORDER is
   eq ltE(str(Str), str(Str2)) = Str < Str2 .
   eq ltE(s(Q), s(Q2)) = string(Q) < string(Q2) .
   eq ltE(? Q, ? Q2) = string(Q) < string(Q2) .
+  eq ltE(?h(Q, Q2), ? Q2) = true [owise] .
   eq ltE(?? Q, ?? Q2) = string(Q) < string(Q2) .
   ceq ltE(ap(H, A), ap(H2, A2)) = ltE(H, H2) if H =/= H2 .
   eq ltE(ap(H, A), ap(H, A2)) = ltA(A, A2) .
@@ -109,7 +112,7 @@ fmod WL-META is
   op MOD : -> Module [memo] .
   eq MOD = upModule('WL-SYNTAX, true) .
 
-  var C : Constant . var V : Variable . var F : Qid . var T T2 : Term .
+  var C C2 : Constant . var V : Variable . var F : Qid . var T T2 : Term .
   var TL : TermList . var NeTL : NeTermList .
   var Sb : Substitution . var A : ArgList . var S : String .
 
@@ -129,6 +132,7 @@ fmod WL-META is
   eq nm('s[C]) = 's[reQ(C)] .
   eq nm('?_[C]) = '?_[reQ(C)] .
   eq nm('??_[C]) = '??_[reQ(C)] .
+  eq nm('?h[C, C2]) = '?h[reQ(C), reQ(C2)] .
   eq nm(F[NeTL]) = F[nmL(NeTL)] [owise] .
   eq nm(T) = T [owise] .
   eq nmL((T, TL)) = nm(T), nmL(TL) .
@@ -139,6 +143,18 @@ fmod WL-META is
   op p2mL : TermList -> TermList .
   eq p2m('?_[C]) = blankVar(C, ":Expr") .
   eq p2m('??_[C]) = blankVar(C, ":ArgList") .
+  *** typed blanks: atoms map to sort-typed variables; a user head f
+  *** maps to ap(s(f), name$ap$f:ArgList), rebuilt into a whole-expr
+  *** binding by mkB below
+  eq p2m('?h[C, C2]) = typedVar(C, qidName(C2)) .
+  op qidName : Constant -> String .
+  eq qidName(C) = substr(string(getName(C)), 1, length(string(getName(C)))) .
+  op typedVar : Constant String -> Term .
+  eq typedVar(C, "Integer") = blankVar(C, ":Int") .
+  eq typedVar(C, "String") = 'str[blankVar(C, ":String")] .
+  eq typedVar(C, "Symbol") = 's[blankVar(C, ":Qid")] .
+  ceq typedVar(C, S) = 'ap['s[qid("'" + S + ".Qid")], blankVar(C, "$ap$" + S + ":ArgList")]
+    if S =/= "Integer" /\ S =/= "String" /\ S =/= "Symbol" .
   eq p2m('s[C]) = 's[reQ(C)] .
   eq p2m(F[NeTL]) = F[p2mL(NeTL)] [owise] .
   eq p2m(T) = T [owise] .
@@ -162,9 +178,22 @@ fmod WL-META is
   *** metalevel substitution -> bindings
   op dn : Term ~> ArgList .
   eq dn(T) = downTerm(T, s('$downTermError)) .
+  op dnStr : Term ~> String .
+  eq dnStr(T) = downTerm(T, "$downTermError") .
+  op dnQ : Term ~> Qid .
+  eq dnQ(T) = downTerm(T, '$downTermError) .
   op s2b : Substitution -> Bnds .
-  ceq s2b((V <- T) ; Sb) = bnd(getName(V), A) & s2b(Sb) if A := dn(T) .
+  ceq s2b((V <- T) ; Sb) = mkB(V, T) & s2b(Sb) if true .
   eq s2b(none) = noBnds .
+  op mkB : Variable Term -> Bnd .
+  ceq mkB(V, T) = bnd(qid(substr(string(getName(V)), 0, N2)),
+                      ap(s(qid(substr(string(getName(V)), N2 + 4,
+                                      length(string(getName(V)))))), A))
+    if N2 := find(string(getName(V)), "$ap$", 0) /\ A := dn(T) .
+  ceq mkB(V, T) = bnd(getName(V), str(dnStr(T))) if getType(V) == 'String .
+  ceq mkB(V, T) = bnd(getName(V), s(dnQ(T))) if getType(V) == 'Qid .
+  ceq mkB(V, T) = bnd(getName(V), A) if A := dn(T) [owise] .
+  var N2 : Nat . var A2 : ArgList .
 endfm
 
 fmod WL-EVAL is
@@ -264,6 +293,7 @@ fmod WL-EVAL is
   eq ev(S, s(Q)) = r(S, s(Q)) .
   eq ev(S, ? Q) = r(S, ? Q) .
   eq ev(S, ?? Q) = r(S, ?? Q) .
+  eq ev(S, ?h(Q, F)) = r(S, ?h(Q, F)) .
 
   *** special heads
   ceq ev(S0, ap(s('If), Cnd :: Rest)) = ifBr(S1, V, Rest)

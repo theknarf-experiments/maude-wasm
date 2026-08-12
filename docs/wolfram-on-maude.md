@@ -159,7 +159,12 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 ## Phase 2 — Full pattern language
 
-- [ ] **2.1 Head-typed blanks** `x_h`, `x__h`, `x___h`.
+- [~] **2.1 Head-typed blanks.** *Done:* `x_h` for atoms
+      (Integer/String/Symbol map to sort-typed meta-variables) and user
+      heads (compiled to `ap(s(h), name$ap$h:ArgList)` with the binding
+      rebuilt as the whole expression); specificity scoring makes typed
+      blanks dispatch before plain blanks automatically. *Pending:*
+      sequence-typed `x__h`/`x___h`. Original task: `x_h`, `x__h`, `x___h`.
 - [ ] **2.2 Conditions** `patt /; cond` and `PatternTest` (`x_?f`) —
       requires calling back into `eval` during matching (matcher and
       evaluator become mutually recursive; design the state threading).
