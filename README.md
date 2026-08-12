@@ -50,11 +50,14 @@ await m.search("$ q q q", "apple cake M:Marking", { arrow: "=>!" });
 // { solutions: [{ state: 4, substitution: { "M:Marking": "null" } }], complete: true }
 ```
 
-The `Maude` class also provides `reduce`, `rewrite`, `frewrite`, `match`,
-`unify`, `variants`, `modelCheck`, `parse`, `show`, and a raw `exec`
-escape hatch — answers are parsed into data. In the browser, run it in a
-Web Worker and pass `locateFile` for the wasm URL (see `packages/demo`
-for the pattern, including cancellation).
+The `Maude` class also provides `reduce`, `rewrite`, `frewrite`,
+`erewrite`, `srewrite`, `match`, `unify`, `variantUnify`, `variants`,
+`vuNarrow`, `modelCheck`, `parse`, `show`, and a raw `exec` escape
+hatch — answers are parsed into data. `MaudeWorkerSession` offers the
+same API against one persistent interpreter (fast for long sessions;
+needs `SharedArrayBuffer`). In the browser, run Maude in a Web Worker
+and pass `locateFile` for the wasm URL (see `packages/demo` for the
+pattern, including cancellation).
 
 Not available in the wasm build: SMT, external objects (sockets,
 processes), and the interactive debugger.

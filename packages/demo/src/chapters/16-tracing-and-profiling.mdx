@@ -1,0 +1,45 @@
+export const title = "Tracing & profiling";
+
+When a reduction gives the wrong answer, the question is always *which equation fired, where, with what substitution*. Maude answers it directly: `set trace on .` prints every rewrite as it happens — the statement applied, the matched variables, and the term before and after:
+
+```maude
+fmod PEANO is
+  sort Nat .
+  op zero : -> Nat [ctor] .
+  op s_ : Nat -> Nat [ctor] .
+  op _plus_ : Nat Nat -> Nat .
+  vars N M : Nat .
+  eq zero plus N = N .
+  eq (s N) plus M = s (N plus M) .
+endfm
+
+set trace on .
+reduce (s zero) plus (s zero) .
+```
+
+Read it bottom-up from your term: each `--->` step shows one equation application. On anything bigger than a toy, full tracing drowns you — `set trace select on .` plus `trace select foo .` restricts the trace to the operators you care about, and `set trace condition on/off .` and friends toggle how much detail each step prints.
+
+For performance rather than correctness, the profiler counts how often each statement fires:
+
+```maude
+fmod PEANO is
+  sort Nat .
+  op zero : -> Nat [ctor] .
+  op s_ : Nat -> Nat [ctor] .
+  op _plus_ : Nat Nat -> Nat .
+  op _times_ : Nat Nat -> Nat .
+  vars N M : Nat .
+  eq zero plus N = N .
+  eq (s N) plus M = s (N plus M) .
+  eq zero times N = zero .
+  eq (s N) times M = M plus (N times M) .
+endfm
+
+set profile on .
+reduce (s s s s zero) times (s s s s zero) .
+show profile .
+```
+
+The report attributes every rewrite to its statement, with percentages — on real specifications this is how you find the accidentally-quadratic equation. (The engine also counts rewrites per command by default; you've been seeing `rewrites: n` lines all along.)
+
+A few more inspection commands worth knowing, all usable in any snippet on this site: `show module .` (the current module, flattened), `show sorts .`, `show ops .`, `show rls .`, `show summary .` (statistics about the module), and after a `search`, `show search graph .` for the full explored graph. Together with tracing and profiling, these make the interpreter pleasantly transparent — there is very little "magic" you can't look inside.

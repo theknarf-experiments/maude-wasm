@@ -1,0 +1,46 @@
+export const title = "Invariant checking through search";
+
+Before reaching for a full temporal logic, notice how much verification plain `search` already buys you. An *invariant* is a property that holds in every reachable state; its violation is a reachable state where it fails. So to check an invariant, search for a violation:
+
+```maude
+mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm
+
+search $ q q q =>* cake cake M:Marking .
+```
+
+`No solution.` is the verdict: starting from a dollar and three quarters, *no reachable state* contains two cakes — a dollar and change can never buy two of them. The search explored the entire reachable state space (six states here) and proved a universal property.
+
+When the invariant *fails*, the search gives you the witness for free:
+
+```maude
+mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm
+
+search $ q q q =>* apple q q q q M:Marking .
+show path 1 .
+```
+
+Claim to refute: "you can never hold an apple and four quarters at once". A solution turns up immediately, and `show path` replays how to get there — a counterexample trace, exactly what you want from a failed verification.
+
+Two practical notes. First, negative properties are often phrased with a condition: `search init =>* C:Conf such that bad(C) .` where `bad` is an equationally-defined predicate — this is how you express invariants that aren't a simple pattern. Second, this method needs the reachable state space to be finite (search runs forever otherwise, and the Cancel button becomes relevant); for infinite-state systems, bounded search (`search [1, 50] …` caps the depth — bounded model checking) or *equational abstraction* (adding equations that collapse states into finitely many equivalence classes) recover decidability.
+
+For properties about ongoing behaviour — orderings of events, "always eventually" — patterns over single states aren't enough. That's what the LTL model checker in chapter 13 is for.

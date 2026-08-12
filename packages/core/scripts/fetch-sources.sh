@@ -28,5 +28,8 @@ fetch "$MAUDE_URL" "maude-${MAUDE_VERSION}.tar.gz" "$MAUDE_DIR"
 fetch "$GMP_URL"   "gmp-${GMP_VERSION}.tar.xz"     "$GMP_DIR"
 fetch "$BUDDY_URL" "buddy-${BUDDY_VERSION}.tar.gz" "$BUDDY_DIR"
 fetch "$BISON_URL" "bison-${BISON_VERSION}.tar.xz"  "$BISON_DIR"
+fetch "$M4_URL" "m4-${M4_VERSION}.tar.xz" "$M4_DIR"
+fetch "$AUTOCONF_URL" "autoconf-${AUTOCONF_VERSION}.tar.xz" "$AUTOCONF_DIR"
+fetch "$AUTOMAKE_URL" "automake-${AUTOMAKE_VERSION}.tar.xz" "$AUTOMAKE_DIR"
 
 echo "All sources ready in $(pwd)"

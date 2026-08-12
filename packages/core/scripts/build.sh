@@ -21,20 +21,31 @@ PREFIX="$ROOT/build/prefix"
 JOBS="$(getconf _NPROCESSORS_ONLN)"
 mkdir -p build dist "$PREFIX"
 
-# ---------------------------------------------------------------- bison (host tool)
-# Maude's grammar needs bison >= 3; macOS ships 2.3. Built natively.
+# ---------------------------------------------------------------- host tools
+# Built natively (not with emscripten): bison >= 3 for Maude's grammar,
+# and m4/autoconf/automake to regenerate ./configure from the git
+# snapshot (Maude 3.5.1 publishes no dist tarball).
 HOSTTOOLS="$ROOT/build/hosttools"
-if [ ! -x "$HOSTTOOLS/bin/bison" ]; then
-  echo "=== building host bison $BISON_VERSION ==="
-  rm -rf build/bison && cp -Rp "third_party/$BISON_DIR" build/bison
-  (
-    cd build/bison
-    ./configure --prefix="$HOSTTOOLS" >/dev/null
-    make -j"$JOBS" >/dev/null
-    make install >/dev/null
-  )
-fi
 export PATH="$HOSTTOOLS/bin:$PATH"
+
+build_host_tool() {
+  local name="$1" dir="$2" check="$3"
+  if [ ! -x "$HOSTTOOLS/bin/$check" ]; then
+    echo "=== building host $name ==="
+    rm -rf "build/$name" && cp -Rp "third_party/$dir" "build/$name"
+    (
+      cd "build/$name"
+      ./configure --prefix="$HOSTTOOLS" >/dev/null
+      make -j"$JOBS" >/dev/null
+      make install >/dev/null
+    )
+  fi
+}
+
+build_host_tool bison    "$BISON_DIR"    bison
+build_host_tool m4       "$M4_DIR"       m4
+build_host_tool autoconf "$AUTOCONF_DIR" autoconf
+build_host_tool automake "$AUTOMAKE_DIR" automake
 
 # ---------------------------------------------------------------- GMP
 # Generic C limbs (no assembly) build; Maude needs the C++ bindings (gmpxx).
@@ -77,9 +88,10 @@ fi
 echo "=== building Maude $MAUDE_VERSION ==="
 rm -rf build/maude && cp -Rp "third_party/$MAUDE_DIR" build/maude
 
-# The 3.5 dist tarball is missing prngSignature.cc (packaging bug); it is
-# vendored in patches/ straight from the Maude3.5 git tag.
-cp patches/prngSignature.cc build/maude/src/ObjectSystem/
+# Git snapshots ship no ./configure; generate it with the host autotools.
+if [ ! -f build/maude/configure ]; then
+  (cd build/maude && autoreconf -i >/dev/null)
+fi
 
 # Embed the standard library (prelude.maude and friends) into the wasm
 # binary at the virtual filesystem root; the wrapper sets MAUDE_LIB=/ so
@@ -90,6 +102,7 @@ for f in build/maude/src/Main/*.maude; do
 done
 
 EM_LINK_FLAGS="\
+ -Oz\
  -sMODULARIZE=1\
  -sEXPORT_ES6=1\
  -sEXPORT_NAME=createMaudeModule\
@@ -120,8 +133,8 @@ EM_LINK_FLAGS="\
     --with-tecla=no \
     --with-libsigsegv=no \
     CPPFLAGS="-I$PREFIX/include" \
-    CFLAGS="-O2 -fno-stack-protector" \
-    CXXFLAGS="-O2 -fno-stack-protector" \
+    CFLAGS="-Oz -fno-stack-protector" \
+    CXXFLAGS="-Oz -fno-stack-protector" \
     LDFLAGS="-L$PREFIX/lib" \
     GMP_LIBS="$PREFIX/lib/libgmpxx.a $PREFIX/lib/libgmp.a" \
     BUDDY_LIB="$PREFIX/lib/libbdd.a"

@@ -20,6 +20,11 @@ export interface MaudeOptions {
    * Receives the filename ("maude.wasm") and should return a URL/path.
    */
   locateFile?: (file: string) => string;
+  /**
+   * Called for every output line as it is produced, before the run
+   * completes — useful for progress display on long searches.
+   */
+  onOutput?: (line: string, stream: "out" | "err") => void;
 }
 
 const INPUT_PATH = "/input.maude";
@@ -43,8 +48,14 @@ export async function runMaude(
 
   const module = await createMaudeModule({
     noInitialRun: true,
-    print: (line: string) => stdout.push(line),
-    printErr: (line: string) => stderr.push(line),
+    print: (line: string) => {
+      stdout.push(line);
+      options.onOutput?.(line, "out");
+    },
+    printErr: (line: string) => {
+      stderr.push(line);
+      options.onOutput?.(line, "err");
+    },
     locateFile: options.locateFile,
     preRun: [
       (mod: EmscriptenModule) => {
@@ -84,6 +95,9 @@ export async function runMaude(
  * modules defined earlier stay in scope for later commands. Each call
  * replays the full history in a fresh interpreter and returns only the
  * output produced by the newest input.
+ *
+ * @deprecated Use `Maude` (structured, replay-based) or
+ * `MaudeWorkerSession` (persistent interpreter) instead.
  */
 export class MaudeSession {
   private history = "";

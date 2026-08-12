@@ -3,6 +3,8 @@ export interface MaudeModuleOptions {
   arguments?: string[];
   print?: (line: string) => void;
   printErr?: (line: string) => void;
+  /** Called per character read from stdin; return a char code, or null for EOF. */
+  stdin?: () => number | null;
   locateFile?: (file: string) => string;
   preRun?: Array<(module: MaudeModule) => void>;
 }
