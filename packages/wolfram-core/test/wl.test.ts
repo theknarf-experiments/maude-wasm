@@ -182,6 +182,29 @@ const cases: Array<[string, string, string]> = [
      ap(s('p), s('y))`,
     "ap(s('p), s('y))",
   ],
+  [
+    "ReplaceRepeated reaches a fixed point (classic pair-sum)",
+    `ap(s('ReplaceRepeated),
+       ap(s('List), ap(s('List), 1 :: 2) :: ap(s('List), 3 :: 4)) ::
+       ap(s('RuleDelayed), ap(s('List), ? 'x :: ? 'y) :: ap(s('Plus), s('x) :: s('y))))`,
+    "10",
+  ],
+  [
+    "MatchQ / FreeQ",
+    `ap(s('List),
+       ap(s('MatchQ), ap(s('f), 1) :: ap(s('f), ?h('x, 'Integer))) ::
+       ap(s('MatchQ), ap(s('f), s('a)) :: ap(s('f), ?h('x, 'Integer))) ::
+       ap(s('FreeQ), ap(s('g), ap(s('f), 1) :: 2) :: ap(s('f), ? 'x)) ::
+       ap(s('FreeQ), ap(s('g), s('a) :: 2) :: ap(s('f), ? 'x)))`,
+    "ap(s('List), s('True) :: s('False) :: s('False) :: s('True))",
+  ],
+  [
+    "Cases and Count with typed-blank patterns",
+    `ap(s('List),
+       ap(s('Cases), ap(s('List), 1 :: s('a) :: 2 :: str("x") :: 3) :: ?h('n, 'Integer)) ::
+       ap(s('Count), ap(s('List), 1 :: s('a) :: 2 :: str("x") :: 3) :: ?h('n, 'Integer)))`,
+    "ap(s('List), ap(s('List), 1 :: 2 :: 3) :: 3)",
+  ],
 ];
 
 describe("WL/M conformance", () => {

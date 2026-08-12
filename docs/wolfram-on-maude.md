@@ -178,10 +178,16 @@ conformance table in `test/wl.test.ts` covers each item below.
       `Optional` (with `Default` values), `Longest`/`Shortest`.**
       Decide per-construct: translate to Maude meta-patterns where
       possible, fall back to our own matcher-driver where not.
-- [ ] **2.4 Rule application operators**: `Rule`, `RuleDelayed`,
-      `ReplaceAll`, `ReplaceRepeated`, `Replace` with level specs.
-- [ ] **2.5 `Cases`, `Position`, `MatchQ`, `FreeQ`, `Count`** with level
-      specifications.
+- [~] **2.4 Rule application operators.** *Done:* `Rule`,
+      `RuleDelayed` (HoldRest), `ReplaceAll`, `ReplaceRepeated`
+      (fixed-point with evaluation between passes). *Pending:* `Replace`
+      with level specs; conditions inside replacement rules. Fixed en
+      route: attribute-driven HoldRest double-prepended the first
+      argument (If/Set are special-cased, so RuleDelayed was the first
+      real exerciser).
+- [~] **2.5 Pattern predicates.** *Done:* `MatchQ`, `FreeQ` (full
+      recursive), `Cases`/`Count` at level 1. *Pending:* `Position` and
+      general level specifications.
 - [ ] **2.6 Flat/OneIdentity pattern pathologies.** Decide and document
       semantics for the known dark corners (e.g. `f[x_]` matching `a`
       when `f` is `Flat`+`OneIdentity`); conformance tests either way.

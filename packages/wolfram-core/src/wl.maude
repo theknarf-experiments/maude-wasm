@@ -217,7 +217,7 @@ fmod WL-EVAL is
 
   var S S0 S1 S2 : St . var Ds Ds0 : Defs . var Dd : Def .
   var N : Nat . var I J : Int .
-  var E E1 H L Rh Cnd V HV Last : Expr .
+  var E E1 H L Rh Cnd V V2 HV Last : Expr .
   var A A1 AV Rest : ArgList .
   var Q F AT : Qid . var B : Bnds . var Sb : Substitution .
   var P UM T : Term . var Str : String . var At : Attrs .
@@ -246,7 +246,8 @@ fmod WL-EVAL is
    && at('SetDelayed, 'HoldAll) && at('CompoundExpression, 'HoldAll)
    && at('SetAttributes, 'HoldFirst) && at('ClearAttributes, 'HoldFirst)
    && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold)
-   && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest) .
+   && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest)
+   && at('RuleDelayed, 'HoldRest) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -365,8 +366,8 @@ fmod WL-EVAL is
   eq evArgs(S, HV, nilA) = r(S, nilA) .
   ceq evArgs(S, HV, A) = evHeld(S, A)
     if hasAttrE(third(S), HV, 'HoldAll) .
-  ceq evArgs(S0, HV, E :: A) = r(S1, E :: AV)
-    if hasAttrE(third(S0), HV, 'HoldRest) /\ r(S1, AV) := evHeldTail(S0, E, A) .
+  ceq evArgs(S0, HV, E :: A) = evHeldTail(S0, E, A)
+    if hasAttrE(third(S0), HV, 'HoldRest) .
   ceq evArgs(S0, HV, E :: A) = r(S2, V :: AV)
     if hasAttrE(third(S0), HV, 'HoldFirst) /\
        r(S1, V) := evHeld1(S0, E) /\ r(S2, AV) := evAll(S1, A) .
@@ -513,10 +514,13 @@ fmod WL-EVAL is
   *** replaced result is re-evaluated (guarded: only when changed)
   op compileRules : ArgList -> Defs .
   eq compileRules(ap(s('Rule), L :: Rh)) = d(compileP(L), Rh) | noD .
+  eq compileRules(ap(s('RuleDelayed), L :: Rh)) = d(compileP(L), Rh) | noD .
   eq compileRules(ap(s('List), A)) = compileRulesL(A) .
   op compileRulesL : ArgList -> Defs .
   eq compileRulesL(nilA) = noD .
   eq compileRulesL(ap(s('Rule), L :: Rh) :: A)
+    = d(compileP(L), Rh) | compileRulesL(A) .
+  eq compileRulesL(ap(s('RuleDelayed), L :: Rh) :: A)
     = d(compileP(L), Rh) | compileRulesL(A) .
 
   op rAll : ArgList Defs -> ArgList .
@@ -532,6 +536,38 @@ fmod WL-EVAL is
   ceq builtin(S, ap(s('ReplaceAll), E :: E1))
     = if V == E then r(S, E) else ev(S, V) fi
     if V := rTry(E, compileRules(E1), compileRules(E1)) .
+
+  *** ReplaceRepeated: apply ReplaceAll + evaluate until a fixed point
+  op rrLoop : St ArgList Defs Nat -> R .
+  eq rrLoop(S, E, Ds, 0) = r(S, E) .
+  ceq rrLoop(S0, E, Ds, s N)
+    = if V2 == E then r(S1, E) else rrLoop(S1, V2, Ds, N) fi
+    if V := rTry(E, Ds, Ds) /\ r(S1, V2) := ev(S0, V) .
+  eq builtin(S, ap(s('ReplaceRepeated), E :: E1))
+    = rrLoop(S, E, compileRules(E1), 1000) .
+
+  *** pattern predicates (rule conditions inside these patterns are not
+  *** yet honored - Phase 2 remainder)
+  op matchesQ : Expr Expr -> Bool .
+  ceq matchesQ(E, L) = true if Sb := metaMatch(MOD, compileP(L), subj(E), nil, 0) .
+  eq matchesQ(E, L) = false [owise] .
+  eq builtin(S, ap(s('MatchQ), E :: E1)) = r(S, bool2wl(matchesQ(E, E1))) .
+
+  op freeE : Expr Expr -> Bool .
+  op freeA : ArgList Expr -> Bool .
+  ceq freeE(E, L) = false if matchesQ(E, L) .
+  eq freeE(ap(H, A), L) = freeE(H, L) and freeA(A, L) [owise] .
+  eq freeE(E, L) = true [owise] .
+  eq freeA(nilA, L) = true .
+  eq freeA(E :: A, L) = freeE(E, L) and freeA(A, L) .
+  eq builtin(S, ap(s('FreeQ), E :: E1)) = r(S, bool2wl(freeE(E, E1))) .
+
+  op casesA : ArgList Expr -> ArgList .
+  eq casesA(nilA, L) = nilA .
+  eq casesA(E :: A, L)
+    = if matchesQ(E, L) then E :: casesA(A, L) else casesA(A, L) fi .
+  eq builtin(S, ap(s('Cases), ap(H, A) :: E1)) = r(S, ap(s('List), casesA(A, E1))) .
+  eq builtin(S, ap(s('Count), ap(H, A) :: E1)) = r(S, lenA(casesA(A, E1))) .
 
   *** anything else is inert
   eq builtin(S, E) = r(S, E) [owise] .
