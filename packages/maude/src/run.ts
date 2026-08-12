@@ -1,4 +1,4 @@
-import createMaudeModule from "@maude-wasm/core";
+import createMaudeModule, { type MaudeModule } from "@maude-wasm/core";
 
 export interface MaudeResult {
   /** Everything Maude printed to stdout. */
@@ -58,7 +58,7 @@ export async function runMaude(
     },
     locateFile: options.locateFile,
     preRun: [
-      (mod: EmscriptenModule) => {
+      (mod: MaudeModule) => {
         // MAUDE_LIB tells Maude where to find prelude.maude, which the
         // core build embeds at the virtual filesystem root.
         mod.ENV.MAUDE_LIB = "/";
@@ -95,10 +95,4 @@ function ensureQuit(input: string): string {
   return trimmed.endsWith("quit .") || trimmed.endsWith("quit")
     ? trimmed + "\n"
     : trimmed + "\nquit .\n";
-}
-
-interface EmscriptenModule {
-  ENV: Record<string, string>;
-  FS: { writeFile(path: string, data: string): void };
-  callMain(args: string[]): number;
 }

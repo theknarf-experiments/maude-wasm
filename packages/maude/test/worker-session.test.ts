@@ -2,20 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 // Import from dist: the worker entry (session-worker.js) only exists as
 // compiled output, and the worker URL resolves relative to the module.
 import { MaudeWorkerSession } from "../dist/index.js";
-
-const VENDING = `
-mod VENDING is
-  sorts Coin Item Marking .
-  subsorts Coin Item < Marking .
-  op __ : Marking Marking -> Marking [assoc comm id: null] .
-  op null : -> Marking .
-  ops $ q : -> Coin [ctor] .
-  ops apple cake : -> Item [ctor] .
-  rl [buy-cake] : $ => cake .
-  rl [buy-apple] : $ => apple q .
-  rl [change] : q q q q => $ .
-endm
-`;
+import { VENDING } from "./fixtures.js";
 
 describe("MaudeWorkerSession", () => {
   const sessionPromise = MaudeWorkerSession.create();
