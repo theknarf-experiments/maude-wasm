@@ -1,0 +1,41 @@
+export const title = "Unification & variants";
+
+Matching makes one term fit another; *unification* solves for variables on both sides: find substitutions making two terms equal. Maude does order-sorted unification modulo axioms, producing fresh variables written `#1`, `#2`, …
+
+```maude
+unify in NAT : X:Nat + 1 =? Y:Nat + 2 .
+```
+
+Two unifiers: the general one (`X` is anything plus 2 — note `+` here is the built-in AC operator, so `1 + X` and `X + 1` are the same term), and the ground one `X = 2, Y = 1`.
+
+*Variants* push this further. Equations marked `[variant]` are used *symbolically*: `get variants` enumerates the distinct irreducible forms a term with variables can take, considering all ways the equations could fire under instantiation. This is folding variant narrowing — the engine behind symbolic protocol analysis tools built on Maude:
+
+```maude
+fmod EXCL is
+  sort E .
+  ops a b c : -> E [ctor] .
+  op f : E -> E .
+  eq f(a) = a [variant] .
+endfm
+
+get variants f(X:E) .
+```
+
+Variant 1 is `f(X)` itself (the equation might not apply); variant 2 says: *if* `X` is `a`, the term collapses to `a`. Each variant pairs a term with the substitution that produces it. On top of variants Maude also offers variant unification (`variant unify`).
+
+*Narrowing* combines this symbolic machinery with rules: `vu-narrow` answers reachability questions about terms *with variables* — not "is this state reachable?" but "**which instances** of this state pattern can reach the target?". Rules must opt in with the `[narrowing]` attribute:
+
+```maude
+mod NARROWING-DEMO is
+  sorts E St .
+  ops a b c : -> E [ctor] .
+  op f : E -> St [ctor] .
+  op done : -> St [ctor] .
+  var X : E .
+  rl [go] : f(b) => done [narrowing] .
+endm
+
+vu-narrow f(X:E) =>* done .
+```
+
+Instead of enumerating ground states like `search`, narrowing *unifies* `f(X)` with the rule's left-hand side and reports the accumulated substitution: starting from `f(b)` — and only `f(b)` — you can reach `done`. This symbolic reachability is the foundation of Maude-based cryptographic protocol analyzers, where the variables stand for attacker-chosen values.

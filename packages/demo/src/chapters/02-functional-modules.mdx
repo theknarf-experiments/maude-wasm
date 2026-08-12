@@ -1,0 +1,28 @@
+export const title = "Functional modules";
+
+A *functional module* (`fmod … endfm`) defines data types and functions equationally. You declare sorts, operators with their arities, and equations that Maude uses left-to-right as simplification rules. Equations are expected to be terminating and confluent: every term has one normal form, so functional modules behave like a (first-order) functional program.
+
+Here are Peano naturals built from scratch — a sort, two constructors, and addition and multiplication defined by structural recursion:
+
+```maude
+fmod PEANO is
+  sort Nat .
+  op zero : -> Nat [ctor] .
+  op s_ : Nat -> Nat [ctor] .
+  op _plus_ : Nat Nat -> Nat .
+  op _times_ : Nat Nat -> Nat .
+  vars N M : Nat .
+  eq zero plus N = N .
+  eq (s N) plus M = s (N plus M) .
+  eq zero times N = zero .
+  eq (s N) times M = M plus (N times M) .
+endfm
+
+reduce (s s s zero) times (s s zero) .
+```
+
+Things to notice. Operators are declared with `op name : arg-sorts -> result-sort`, and underscores in a name are argument positions — `s_` is prefix, `_plus_` is infix. This *mixfix* syntax means you design your own notation. The `[ctor]` attribute marks constructors: the data itself, as opposed to functions the equations must eliminate.
+
+Variables (`vars N M : Nat`) stand for any term of their sort, and equations apply by *pattern matching*: `(s N) plus M` matches any term whose head is `s`, binding `N` to its argument.
+
+Exercise: add `op fact : Nat -> Nat .` with equations `eq fact(zero) = s zero .` and `eq fact(s N) = (s N) times fact(N) .`, then reduce `fact(s s s s zero)` — you should get 24 in Peano notation.

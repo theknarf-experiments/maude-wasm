@@ -1,0 +1,50 @@
+export const title = "Parameterized modules & views";
+
+The prelude's `LIST{X}` and `SET{X}` are instances of Maude's generic-programming machinery: *parameterized modules*, whose parameters are *theories*, instantiated via *views*. A theory declares an interface; the simplest, built-in `TRIV`, just requires a sort called `Elt`. A parameterized module can then use the parameter's sorts as `X$Elt`:
+
+```maude
+fmod PAIR{X :: TRIV, Y :: TRIV} is
+  sort Pair{X, Y} .
+  op <_;_> : X$Elt Y$Elt -> Pair{X, Y} [ctor] .
+  op first : Pair{X, Y} -> X$Elt .
+  op second : Pair{X, Y} -> Y$Elt .
+  var A : X$Elt . var B : Y$Elt .
+  eq first(< A ; B >) = A .
+  eq second(< A ; B >) = B .
+endfm
+
+fmod PAIR-DEMO is
+  protecting PAIR{Nat, String} .
+endfm
+
+reduce first(< 42 ; "hello" >) .
+reduce second(< 42 ; "hello" >) .
+```
+
+`PAIR{Nat, String}` instantiates the module through the prelude's predefined views `Nat` and `String` — a view maps everything the theory requires (here just `Elt`) to something concrete (`Nat`, `String`). The instantiated sort is written `Pair{Nat, String}`, and the type checking is real: try reducing `first(< "backwards" ; 42 >)` and watch it fail to parse.
+
+A view is one line when the mapping is simple. Here's one sending `TRIV`'s `Elt` to the `Sorted` sort from the previous chapter's idea — any sort can be an element type:
+
+```maude
+fmod PAIR{X :: TRIV, Y :: TRIV} is
+  sort Pair{X, Y} .
+  op <_;_> : X$Elt Y$Elt -> Pair{X, Y} [ctor] .
+  op first : Pair{X, Y} -> X$Elt .
+  op second : Pair{X, Y} -> Y$Elt .
+  var A : X$Elt . var B : Y$Elt .
+  eq first(< A ; B >) = A .
+  eq second(< A ; B >) = B .
+endfm
+
+view Rational from TRIV to RAT is
+  sort Elt to Rat .
+endv
+
+fmod RAT-PAIRS is
+  protecting PAIR{Rational, Rational} .
+endfm
+
+reduce first(< 1/2 ; 2/3 >) .
+```
+
+Theories richer than `TRIV` require operations and even equations of their instances — the prelude's `STRICT-TOTAL-ORDER` demands a `_<_`, which is how a generic sorting module can require its elements be comparable. Module composition (`protecting`, `extending`, `including`, summation `+`, renaming `*`) plus parameterization is Maude's answer to a module system — all of it algebra over module expressions.

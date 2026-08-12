@@ -1,0 +1,21 @@
+export const title = "Introduction";
+
+Maude is a language and system based on rewriting logic, developed at SRI International and the University of Illinois. The core idea is radical and simple: a program is a collection of *rewrite rules over terms*. Computation is rewriting — replacing subterms that match a rule's left-hand side with its right-hand side, over and over, until no more rules apply.
+
+That one idea scales remarkably far: functional programming (equations), concurrent and nondeterministic systems (rules), model checking (exploring all rule applications), and even metaprogramming (Maude programs are themselves Maude terms) all fall out of it. This tutorial walks through each layer with live examples.
+
+Everything you run here executes a real Maude 3.5 interpreter, compiled to WebAssembly, inside a Web Worker in your browser tab. Every snippet is editable — changing them and re-running is the whole point. Try your first reduction:
+
+```maude
+reduce in NAT : 3 * 4 + 1 .
+```
+
+`NAT` is a built-in module of natural numbers. The `reduce` command asks Maude to apply equations until it reaches a normal form. The answer line tells you two things: the result term (`13`) and its *least sort* (`NzNat` — a nonzero natural, more specific than `Nat`). Sorts are a big deal in Maude; chapter 3 is devoted to them.
+
+Numbers are arbitrary precision (the wasm build carries the GMP bignum library), so this works fine:
+
+```maude
+reduce in NAT : 2 ^ 100 .
+```
+
+A note on reading output: `rewrites: n` counts equation/rule applications, and each run here is a fresh, isolated interpreter.

@@ -1,0 +1,45 @@
+export const title = "Object-oriented modules";
+
+Concurrent systems are often naturally described as *objects exchanging messages*. Maude's object-oriented modules (`omod … endom`) are syntactic sugar over system modules for exactly that: a `class` declares attributes, `msg` declares message constructors, and a state — a `Configuration` — is a multiset (AC, again!) of objects `< oid : Class | attr : value, ... >` and in-flight messages.
+
+```maude
+omod BANK is
+  protecting QID .
+  protecting INT .
+  subsort Qid < Oid .
+  class Account | bal : Int .
+  msg credit : Oid Int -> Msg .
+  msg debit : Oid Int -> Msg .
+  var O : Oid . vars N M : Int .
+  rl [credit] : credit(O, M) < O : Account | bal : N >
+             => < O : Account | bal : N + M > .
+  crl [debit] : debit(O, M) < O : Account | bal : N >
+             => < O : Account | bal : N - M > if M <= N .
+endom
+
+rewrite < 'savings : Account | bal : 20 > credit('savings, 100) debit('savings, 30) .
+```
+
+Each rule consumes a message and the addressed object, producing the updated object — rules fire anywhere in the configuration soup, which is precisely concurrent message passing. We use quoted identifiers as object names by declaring `subsort Qid < Oid`.
+
+Note the `debit` rule is conditional: it only fires when the balance covers the amount. What if the debit arrives *before* the credit? The default `rewrite` strategy picks some order, but `search` tells the whole story — here both messages always end up processed, because the stuck debit waits until the credit has landed:
+
+```maude
+omod BANK is
+  protecting QID .
+  protecting INT .
+  subsort Qid < Oid .
+  class Account | bal : Int .
+  msg credit : Oid Int -> Msg .
+  msg debit : Oid Int -> Msg .
+  var O : Oid . vars N M : Int .
+  rl [credit] : credit(O, M) < O : Account | bal : N >
+             => < O : Account | bal : N + M > .
+  crl [debit] : debit(O, M) < O : Account | bal : N >
+             => < O : Account | bal : N - M > if M <= N .
+endom
+
+search < 'a : Account | bal : 20 > debit('a, 30) credit('a, 100) =>! C:Configuration .
+```
+
+There's more sugar: rules may mention only the attributes they touch (`< O : Account | >` on a left-hand side matches regardless of the other attributes), classes support inheritance (`subclass Savings < Account .`), and multi-object rules synchronize several objects at once. The `erewrite` (`erew`) command is a fairer sibling of `rewrite` designed for configurations — it delivers messages fairly across objects (in native Maude it also connects *external* objects like sockets and files; those don't exist in the wasm build, but `erew` itself works fine). Combined with the model checker from chapter 12, this is Maude's sweet spot: specifying and verifying distributed protocols.

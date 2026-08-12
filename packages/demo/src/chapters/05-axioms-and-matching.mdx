@@ -1,0 +1,49 @@
+export const title = "Equational axioms & matching";
+
+Some equations — associativity, commutativity, identity — are terrible as left-to-right rewrite rules (commutativity alone loops forever). Maude lets you declare them as *attributes* of an operator instead: `assoc`, `comm`, `id: e`. Matching then happens *modulo* those axioms, built into the engine.
+
+This is where Maude notation gets pleasantly algebraic: an associative-commutative operator with identity gives you multisets for free. Here juxtaposition (`__`) is the multiset union:
+
+```maude
+fmod BAG is
+  protecting NAT .
+  sort Bag .
+  subsort Nat < Bag .
+  op empty : -> Bag [ctor] .
+  op __ : Bag Bag -> Bag [ctor assoc comm id: empty] .
+endfm
+
+reduce 3 1 2 1 .
+```
+
+Nothing reduced — `3 1 2 1` is already a constructor normal form — but Maude displays it in a canonical order, because the term is the *same term* under assoc/comm no matter how you write it.
+
+The `match` command shows matching modulo axioms directly. Ask which elements `X` can be picked out of a bag, with `B` taking the rest — one matcher per choice:
+
+```maude
+fmod BAG is
+  protecting NAT .
+  sort Bag .
+  subsort Nat < Bag .
+  op empty : -> Bag [ctor] .
+  op __ : Bag Bag -> Bag [ctor assoc comm id: empty] .
+endfm
+
+match X:Nat B:Bag <=? 1 2 3 .
+```
+
+A variant, `xmatch`, matches *with extension*: the pattern may cover just a portion of an AC term, with Maude reporting which portion. This is exactly how rules apply inside larger states — a rule about two elements can fire in a bag of fifty:
+
+```maude
+fmod BAG is
+  protecting NAT .
+  sort Bag .
+  subsort Nat < Bag .
+  op empty : -> Bag [ctor] .
+  op __ : Bag Bag -> Bag [ctor assoc comm id: empty] .
+endfm
+
+xmatch X:Nat Y:Nat <=? 1 2 3 .
+```
+
+Matching modulo axioms is the workhorse behind everything in the next chapters: rules on multisets of objects are how Maude models concurrent systems.

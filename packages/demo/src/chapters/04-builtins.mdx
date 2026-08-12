@@ -1,0 +1,57 @@
+export const title = "The prelude's built-in types";
+
+Every Maude session silently loads the *prelude* — a standard library of functional modules. You've met `NAT` and `RAT`; the prelude also provides booleans (`BOOL`, always in scope: `true`, `false`, `and`, `or`, `==`, `=/=`), machine-efficient strings, IEEE floats, and conversions between them all.
+
+```maude
+reduce in STRING : "hello " + "world" .
+reduce in STRING : length("hello") .
+reduce in STRING : substr("hello world", 6, 5) .
+```
+
+```maude
+reduce in FLOAT : sqrt(2.0) .
+reduce in CONVERSION : float(1/3) .
+reduce in CONVERSION : string(42, 10) .
+reduce in CONVERSION : rat("2/7", 10) .
+```
+
+`CONVERSION` bridges the numeric and string worlds — the `10`s above are radixes. Note the exact rational `1/3` becoming an inexact `FiniteFloat`.
+
+The prelude also ships *parameterized* containers — `LIST{X}`, `SET{X}`, `MAP{X, Y}` — which you instantiate with a *view* naming the element type. The prelude predefines views for all its types, so `LIST{Nat}` or `SET{String}` just work:
+
+```maude
+fmod SHOPPING is
+  protecting SET{String} .
+endfm
+
+reduce insert("milk", insert("eggs", insert("milk", empty))) .
+reduce "milk", "eggs", "milk" .
+```
+
+Sets are idempotent AC operators under the hood — inserting `"milk"` twice keeps one, and writing a set literally with `_,_` deduplicates the same way. Lists are plain associative operators with juxtaposition syntax:
+
+```maude
+fmod QUEUE is
+  protecting LIST{Nat} .
+endfm
+
+reduce append(1 2 3, 4 5) .
+reduce reverse(1 2 3) .
+reduce size(1 2 3) .
+```
+
+`MAP{X, Y}` rounds out the containers — and note where a lookup of a missing key lands: in the *kind* `[FindResult]`, exactly the "well-formed but not a proper value" pattern from the sorts chapter:
+
+```maude
+fmod INVENTORY is
+  protecting MAP{String, Nat} .
+endfm
+
+reduce insert("apples", 3, insert("pears", 7, empty)) .
+reduce ("apples" |-> 3, "pears" |-> 7)["pears"] .
+reduce ("apples" |-> 3)["bananas"] .
+```
+
+Two more prelude nuggets worth knowing: `RANDOM` provides `random(n)` (a seeded Mersenne twister — deterministic per session), and the reason `2 ^ 100` was instant back in chapter 1 is the `iter` operator attribute: towers of successors like `s_^100(0)` are stored as a single node, not a hundred of them.
+
+Where do these come from? `LIST{X}` is an ordinary user-definable module — chapter 7 shows how to write parameterized modules and views yourself.

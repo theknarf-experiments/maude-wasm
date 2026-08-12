@@ -1,0 +1,389 @@
+:root {
+  color-scheme: light dark;
+  --accent: #7c3aed;
+  --border: color-mix(in srgb, currentColor 18%, transparent);
+  --surface: color-mix(in srgb, currentColor 5%, transparent);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 19rem minmax(0, 1fr);
+  gap: 3rem;
+  margin: 0;
+  padding: 2.5rem 2.5rem 4rem;
+}
+
+/* ---------------------------------------------------------- sidebar */
+
+.sidebar {
+  position: sticky;
+  top: 2.5rem;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  /* Offset by the height of the content column's "CHAPTER n OF n"
+     eyebrow (0.8rem x 1.65 line-height + 0.3rem margin) so the h1
+     lines up with the chapter title. */
+  padding-top: 1.6rem;
+}
+
+.sidebar h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  line-height: 1.3;
+}
+
+.accent {
+  color: var(--accent);
+}
+
+.sidebar .tagline {
+  margin: 0;
+  opacity: 0.75;
+  font-size: 0.85rem;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  /* Pull the link pills into the gutter so the nav text lines up with
+     the heading and tagline above. */
+  margin-inline: -0.75rem;
+}
+
+.sidebar nav a {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.3rem;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.sidebar nav a:hover {
+  background: var(--surface);
+}
+
+.sidebar nav a.active {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.chapter-no {
+  display: inline-block;
+  width: 1.6rem;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sidebar nav a.playground-link {
+  margin-top: 1rem;
+  position: relative;
+}
+
+.sidebar nav a.playground-link::before {
+  content: "";
+  position: absolute;
+  top: -0.55rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------------------------------------------------------- chapters */
+
+main {
+  min-width: 0;
+}
+
+main h2 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+}
+
+/* The `.chapter p` margin rule is more specific than a lone class, so
+   pin the eyebrow's margins explicitly. */
+p.chapter-count,
+.chapter p.chapter-count {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+}
+
+.chapter {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.playground {
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.chapter p {
+  line-height: 1.65;
+  margin: 0.9rem 0;
+}
+
+.chapter h3 {
+  margin: 1.5rem 0 0.5rem;
+}
+
+.chapter code,
+.listing {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.chapter p code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.2rem;
+  padding: 0.05rem 0.3rem;
+}
+
+.listing {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  padding: 0.9rem;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.pager a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.pager a:hover {
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------- snippets */
+
+.snippet {
+  margin: 1.1rem 0;
+}
+
+.snippet .cm-editor {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem 0.375rem 0 0;
+  border-bottom: none;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  background: var(--surface);
+}
+
+.snippet .cm-editor.cm-focused {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.snippet-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 0.375rem 0.375rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+}
+
+.snippet-bar button,
+.toolbar button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.snippet-bar button:disabled,
+.toolbar button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+button.cancel {
+  background: transparent !important;
+  border-color: var(--border) !important;
+  color: inherit !important;
+  font-weight: 400 !important;
+}
+
+.snippet-output {
+  margin-top: 0.4rem;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding: 0.2rem 0 0.2rem 0.9rem;
+}
+
+.snippet-output pre {
+  margin: 0.25rem 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.elapsed {
+  opacity: 0.6;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stderr {
+  color: #dc2626;
+}
+
+/* ---------------------------------------------------------- playground */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.toolbar select {
+  font: inherit;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  min-height: 24rem;
+}
+
+.panes .editor .cm-editor,
+.panes .output {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  background: var(--surface);
+}
+
+.panes .output {
+  padding: 0.9rem;
+  overflow: auto;
+}
+
+.panes .editor .cm-editor {
+  height: 100%;
+  min-height: 24rem;
+  overflow: hidden;
+}
+
+.panes .editor .cm-editor.cm-focused {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.panes .output pre {
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+}
+
+.placeholder {
+  opacity: 0.5;
+}
+
+/* ---------------------------------------------------------- responsive */
+
+@media (max-width: 52rem) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .sidebar {
+    position: static;
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .panes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.api-listing {
+  border-radius: 0.375rem 0.375rem 0 0;
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.listing-editor {
+  margin: 1.1rem 0;
+}
+
+.listing-editor .cm-editor {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  background: var(--surface);
+}
+
+.listing-editor.attached {
+  margin: 0;
+}
+
+.listing-editor.attached .cm-editor {
+  border-radius: 0.375rem 0.375rem 0 0;
+  border-bottom: none;
+}
+
+.repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: start;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.repo-link:hover {
+  border-color: color-mix(in srgb, currentColor 40%, transparent);
+}

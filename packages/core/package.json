@@ -1,0 +1,24 @@
+{
+  "name": "@maude-wasm/core",
+  "version": "0.1.0",
+  "description": "Maude compiled to WebAssembly with Emscripten (unwrapped Emscripten module)",
+  "type": "module",
+  "license": "GPL-2.0-or-later",
+  "exports": {
+    ".": {
+      "types": "./dist-types/maude.d.ts",
+      "default": "./dist/maude.mjs"
+    },
+    "./maude.wasm": "./dist/maude.wasm"
+  },
+  "files": [
+    "dist",
+    "dist-types"
+  ],
+  "scripts": {
+    "fetch-sources": "./scripts/fetch-sources.sh",
+    "build": "./scripts/build.sh",
+    "rebuild-wasm": "FORCE=1 ./scripts/build.sh",
+    "clean": "rm -rf build dist third_party"
+  }
+}

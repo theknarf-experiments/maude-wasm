@@ -1,0 +1,16 @@
+export const title = "The meta-level";
+
+Rewriting logic is *reflective*: Maude's own modules and terms can be represented as ordinary Maude terms, and the prelude module `META-LEVEL` provides operations on those representations. Quoted identifiers are the giveaway — `'NAT` is the name of the module `NAT` as a piece of data, and `'_+_['0.Zero, '0.Zero]` is a term as data.
+
+`metaReduce` takes a meta-represented module and term and runs a reduction — the interpreter, invoked from inside the language:
+
+```maude
+reduce in META-LEVEL :
+  metaReduce(upModule('NAT, false), '_+_['s_^3['0.Zero], 's_^4['0.Zero]]) .
+```
+
+The result is a pair of a meta-term and its sort: 3 + 4 is `s_^7['0.Zero]` — seven successors of zero — of sort `'NzNat`. `upModule` lifts a named module to its meta-representation; `upTerm` and `downTerm` move single terms up and down.
+
+`metaReduce` is one of a whole family of *descent functions* mirroring everything you've used in this tutorial: `metaRewrite`, `metaSearch`, `metaMatch`, `metaUnify`, `metaApply` (apply one named rule and get the substitution back), `metaSrewrite` for strategies, and `metaParse`/`metaPrettyPrint` to go between token lists and meta-terms — the raw material for building parsers and user interfaces.
+
+This is not a party trick. Because programs are data, you can write program transformations, custom rewriting strategies, new module operations, and language prototypes as ordinary Maude functions over meta-modules. Full Maude — a large extension of the language — is itself written in Maude this way.

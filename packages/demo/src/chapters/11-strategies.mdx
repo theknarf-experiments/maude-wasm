@@ -1,0 +1,48 @@
+export const title = "The strategy language";
+
+`rewrite` follows a fixed default strategy; `search` explores everything. Often you want something in between: *this* rule, then *that* one, repeated until it fails. Maude's strategy language controls rule application without touching the rules themselves — keeping the model (what can happen) cleanly separated from the control (what we choose to do).
+
+The `srewrite` (or `srew`) command rewrites a term *using* a strategy expression. Rule labels are the atoms; `;` is sequence, `|` is choice, `!` is "repeat until no longer applicable":
+
+```maude
+mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm
+
+srewrite $ $ q using buy-cake ; buy-apple .
+srewrite $ $ using buy-apple ! .
+```
+
+`srewrite` returns *all* results the strategy allows — fewer than `search` would find (the strategy forbids some executions), possibly more than one (strategies can still be nondeterministic). Strategies can be named and defined in *strategy modules* (`smod`), including recursively:
+
+```maude
+mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm
+
+smod VENDING-STRAT is
+  protecting VENDING .
+  strat spend-all : @ Marking .
+  sd spend-all := (buy-cake | buy-apple | change) ! .
+endsm
+
+srewrite $ q q q using spend-all .
+```
+
+The full language has much more: tests (`match P s.t. C`), conditionals (`S1 ? S2 : S3`), subterm rewriting (`matchrew`), `top`, `one`, bounded iteration — enough to express classic algorithms (backtracking, heuristics) as strategies over a rule set. Strategy modules are themselves reflected at the meta-level, like everything in Maude.

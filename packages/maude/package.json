@@ -1,0 +1,27 @@
+{
+  "name": "maude-wasm",
+  "version": "0.1.0",
+  "description": "Run the Maude term rewriting system in Node and the browser via WebAssembly",
+  "type": "module",
+  "license": "GPL-2.0-or-later",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@maude-wasm/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

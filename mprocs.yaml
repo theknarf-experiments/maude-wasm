@@ -1,0 +1,16 @@
+procs:
+  demo:
+    cmd: ["pnpm", "--filter", "@maude-wasm/demo", "dev"]
+  maude-wasm:
+    # Rebuild the wrapper on change so the demo picks up edits to
+    # packages/maude/src (its exports point at dist/).
+    cmd:
+      [
+        "pnpm",
+        "--filter",
+        "maude-wasm",
+        "exec",
+        "tsc",
+        "--watch",
+        "--preserveWatchOutput",
+      ]

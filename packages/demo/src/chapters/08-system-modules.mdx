@@ -1,0 +1,45 @@
+export const title = "System modules & rules";
+
+Equations compute functions; *rules* (`rl`) describe transitions. A *system module* (`mod … endm`) may contain both. Rules need not terminate and need not be confluent — different rules can apply to the same state, and that nondeterminism is a feature: it models concurrency and choice.
+
+The classic example: a vending machine. A state is a multiset of coins and items (note the AC operator again). Dollars buy things; four quarters make a dollar:
+
+```maude
+mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm
+
+rewrite [1] $ $ q .
+rewrite [5] $ $ q .
+```
+
+`rewrite [n]` applies at most `n` rule steps using a default strategy — one possible execution, not the only one. Run it twice with different bounds and you follow one path through the state space.
+
+Rules can also be *conditional* (`crl … if …`). Here is bubble sort in two lines: a list with an out-of-order adjacent pair rewrites by swapping it, and rewriting stops exactly when the list is sorted. `frewrite` is an alternative *position-fair* strategy — for this confluent system both reach the same answer:
+
+```maude
+mod SORTING is
+  protecting NAT .
+  sort List .
+  subsort Nat < List .
+  op nil : -> List [ctor] .
+  op __ : List List -> List [ctor assoc id: nil] .
+  vars I J : Nat .
+  crl [swap] : I J => J I if J < I .
+endm
+
+rewrite 4 3 7 1 5 0 .
+frewrite 4 3 7 1 5 0 .
+```
+
+Note the interplay of everything so far: `__` is associative (but *not* commutative — order is the whole point), the rule matches any adjacent pair anywhere in the list thanks to matching with extension, and the condition `J < I` uses the built-in naturals.
+
+But a single execution is rarely what you want to know about a nondeterministic system. The interesting question is about *all* executions — which is the next chapter.

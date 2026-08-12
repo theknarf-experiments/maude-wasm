@@ -1,0 +1,65 @@
+export const title = "LTL model checking";
+
+Search answers reachability questions. For properties about *ongoing behaviour* — "the light is green infinitely often" — Maude ships a linear temporal logic (LTL) model checker. You load `model-checker`, make your states satisfy `State`, and define which atomic propositions (`Prop`) hold in which states via the satisfaction operator `|=`.
+
+```maude
+load model-checker
+
+mod TRAFFIC is
+  including MODEL-CHECKER .
+  ops green yellow red : -> State [ctor] .
+  rl green => yellow .
+  rl yellow => red .
+  rl red => green .
+  op is-green : -> Prop [ctor] .
+  var S : State .
+  eq green |= is-green = true .
+  eq S |= is-green = false [owise] .
+endm
+
+reduce modelCheck(green, [] <> is-green) .
+```
+
+`[]` is "always", `<>` is "eventually", so `[] <> is-green` says: at every point, the light will eventually be green again. The three-state cycle satisfies it, so `modelCheck` returns `true`. (The `[owise]` — "otherwise" — attribute on the second satisfaction equation applies it only when no other equation does.)
+
+A false property returns a *counterexample* instead — a path to a loop that violates it. Claim the light is always green:
+
+```maude
+load model-checker
+
+mod TRAFFIC is
+  including MODEL-CHECKER .
+  ops green yellow red : -> State [ctor] .
+  rl green => yellow .
+  rl yellow => red .
+  rl red => green .
+  op is-green : -> Prop [ctor] .
+  var S : State .
+  eq green |= is-green = true .
+  eq S |= is-green = false [owise] .
+endm
+
+reduce modelCheck(green, [] is-green) .
+```
+
+The counterexample is a pair: a finite prefix, then a cycle that repeats forever, each entry a `{state, rule-label}` pair. Other LTL connectives include `U` (until), `->` (implies), `/\` and `\/` — e.g. try `modelCheck(green, [] (is-green -> O ~ is-green))` where `O` is "next" and `~` is negation.
+
+The model checker needs a finite reachable state space (this one has three states). The wasm build handles respectable spaces, but it shares the browser tab's memory — the Cancel button is your friend on runaway models.
+
+The same library also does pure LTL reasoning, no system required: `satSolve` finds a model of a formula (as a prefix + repeating cycle), and `tautCheck` decides validity:
+
+```maude
+load model-checker
+
+fmod SAT-DEMO is
+  extending SAT-SOLVER .
+  extending LTL .
+  ops p q : -> Formula .
+endfm
+
+reduce satSolve(p /\ O ~ p) .
+reduce tautCheck(p \/ ~ p) .
+reduce tautCheck(<> p -> p) .
+```
+
+The first result reads: a model is any run where `p` holds now and not at the next instant. And the last one is *not* a tautology — "eventually p" does not imply "p now" — so you get a counterexample model back.

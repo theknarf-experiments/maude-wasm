@@ -1,0 +1,13 @@
+{
+  "name": "maude-wasm-monorepo",
+  "private": true,
+  "packageManager": "pnpm@11.21.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "mprocs",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "mprocs": "^0.9.6"
+  }
+}

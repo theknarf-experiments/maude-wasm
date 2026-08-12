@@ -1,0 +1,26 @@
+export const title = "Searching the state space";
+
+`search` explores every possible sequence of rule applications, breadth-first, looking for states matching a pattern. The arrow picks the reachability flavour: `=>*` (any number of steps), `=>+` (at least one), `=>!` (terminal states only), `=>1` (exactly one step).
+
+Starting with a dollar and three quarters, which *final* states include both an apple and a cake?
+
+```maude
+mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm
+
+search $ q q q =>! apple cake M:Marking .
+show path 4 .
+```
+
+Each solution reports the matched state and a substitution for the pattern variables. The solution also names a state number in the search graph — `show path 4 .` replays the exact sequence of rule applications that reached it: buy an apple (gaining a quarter), four quarters become a dollar, buy a cake.
+
+Searches can be bounded — `search [5, 10] …` caps solutions at 5 and depth at 10 — and filtered with a side condition: `search $ =>! M:Marking such that M =/= cake .` Try changing the pattern above to `cake cake M:Marking` and see what a dollar and three quarters can and cannot buy.

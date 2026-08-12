@@ -1,0 +1,67 @@
+import { ApiSnippet } from "../Snippet";
+
+export const title = "Using maude-wasm in your app";
+
+Everything in this tutorial runs on `maude-wasm`, the library this site demonstrates. It works in Node and the browser. The low-level API runs a batch of input through a fresh interpreter:
+
+```ts
+import { runMaude } from "maude-wasm";
+
+const { stdout } = await runMaude("reduce in NAT : 1 + 2 .");
+// stdout contains "result NzNat: 3"
+```
+
+The structured API wraps the commands you've seen in this tutorial — `reduce`, `rewrite`, `search`, `match`, `unify`, `get variants`, `modelCheck`, `parse`, `show` — and parses Maude's answers into data instead of text. These listings are *live*: Run executes exactly this call through the library and shows the object it actually returns.
+
+<ApiSnippet
+  listing={`import { Maude } from "maude-wasm";
+
+const m = new Maude();
+await m.load(\`mod VENDING is ... endm\`); // the module from chapter 8
+
+const result = await m.search("$ q q q", "apple cake M:Marking", {
+  arrow: "=>!",
+});`}
+  setup={`mod VENDING is
+  sorts Coin Item Marking .
+  subsorts Coin Item < Marking .
+  op __ : Marking Marking -> Marking [assoc comm id: null] .
+  op null : -> Marking .
+  ops $ q : -> Coin [ctor] .
+  ops apple cake : -> Item [ctor] .
+  rl [buy-cake]  : $ => cake .
+  rl [buy-apple] : $ => apple q .
+  rl [change]    : q q q q => $ .
+endm`}
+  op={{
+    method: "search",
+    subject: "$ q q q",
+    pattern: "apple cake M:Marking",
+    arrow: "=>!",
+  }}
+/>
+
+<ApiSnippet
+  listing={`await m.loadFile("model-checker");
+await m.load(\`mod TRAFFIC is ... endm\`); // the module from chapter 12
+
+const result = await m.modelCheck("green", "[] is-green");`}
+  setup={`load model-checker
+
+mod TRAFFIC is
+  including MODEL-CHECKER .
+  ops green yellow red : -> State [ctor] .
+  rl green => yellow .
+  rl yellow => red .
+  rl red => green .
+  op is-green : -> Prop [ctor] .
+  var S : State .
+  eq green |= is-green = true .
+  eq S |= is-green = false [owise] .
+endm`}
+  op={{ method: "modelCheck", initial: "green", formula: "[] is-green" }}
+/>
+
+In a browser you'll want Maude off the main thread; this site's worker setup (a typed request/response protocol around the `Maude` class, with cancellation via `worker.terminate()`) is in the demo source — `src/worker.ts` and `src/useMaude.ts`.
+
+To go deeper into Maude itself: the *Maude Manual* and *All About Maude* book cover strategies, object-oriented modules, parameterized modules and views, and much more that fits in this build. Head to the Playground to experiment freely.

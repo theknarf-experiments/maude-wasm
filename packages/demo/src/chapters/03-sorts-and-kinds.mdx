@@ -1,0 +1,34 @@
+export const title = "Sorts, subsorts and kinds";
+
+Maude's type system is *order-sorted*: sorts can be declared as subsorts of other sorts, forming a hierarchy. The prelude's numbers use this heavily — `NzNat < Nat < Int < Rat`. Every term has a *least sort*, the most specific one Maude can compute. The `parse` command shows it without doing any rewriting:
+
+```maude
+parse in RAT : -4 .
+parse in RAT : 4 .
+parse in RAT : 1/2 .
+```
+
+Subsorts make partial functions honest. What is `1 / 0`? Rather than crashing, Maude gives the term a sort in brackets — the *kind* `[Rat]` — meaning: this is a well-formed term over the rationals' connected component, but it does not denote a proper value. Error terms are just terms, and they propagate:
+
+```maude
+reduce in RAT : 1 / 0 .
+reduce in RAT : (1 / 0) + 5 .
+```
+
+Defining your own hierarchy is one line per relation. Note how the least sort of a term depends on which constructors built it:
+
+```maude
+fmod ZOO is
+  sorts Dog Cat Animal .
+  subsorts Dog Cat < Animal .
+  op rex : -> Dog [ctor] .
+  op felix : -> Cat [ctor] .
+  op mother : Animal -> Animal .
+endfm
+
+parse rex .
+parse mother(rex) .
+show sorts .
+```
+
+`rex` parses as `Dog`, but `mother(rex)` only as `Animal` — the declaration of `mother` is all Maude knows. Subsort-overloading operator declarations (declaring `mother : Dog -> Dog` too) is how you refine that. The `show sorts .` at the end asks Maude to print the whole sort hierarchy of the current module; `show module .` similarly prints its full flattened content — introspection commands worth keeping in your toolbox.

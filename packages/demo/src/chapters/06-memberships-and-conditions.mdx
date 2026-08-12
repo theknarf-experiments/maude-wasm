@@ -1,0 +1,38 @@
+export const title = "Conditions & membership axioms";
+
+Equations, and most other statements in Maude, can be *conditional*. A `ceq` fires only when its condition holds; conditions chain with `/\` and come in four kinds: equalities `t = t'`, *matching equations* `p := t` (which bind the pattern's new variables — Maude's version of a `let`), sort tests `t : Sort`, and plain boolean terms. The `[owise]` ("otherwise") attribute is a pragmatic complement: that equation applies only when no other one does.
+
+```maude
+fmod MAX is
+  protecting NAT .
+  op max2 : Nat Nat -> Nat .
+  vars N M : Nat .
+  ceq max2(N, M) = N if M <= N .
+  eq max2(N, M) = M [owise] .
+endfm
+
+reduce max2(3, 7) .
+reduce max2(7, 3) .
+```
+
+The third statement kind (after equations and rules) is the *membership axiom*: `mb T : Sort` and its conditional form `cmb`. Where subsort declarations assign sorts by construction, memberships assign sorts by *property* — Maude computes them while it reduces. The classic example: sorted lists as a subsort of lists, carved out by a recursive membership:
+
+```maude
+fmod SORTED-LIST is
+  protecting NAT .
+  sorts List Sorted .
+  subsort Sorted < List .
+  op nil : -> Sorted [ctor] .
+  op _::_ : Nat List -> List [ctor] .
+  vars N M : Nat . var L : List .
+  mb N :: nil : Sorted .
+  cmb N :: M :: L : Sorted if N <= M /\ (M :: L) : Sorted .
+endfm
+
+reduce 1 :: 3 :: 5 :: nil .
+reduce 3 :: 1 :: nil .
+```
+
+The same term constructor yields least sort `Sorted` for one list and plain `List` for the other — the sort is *computed*, not declared. Note the condition mixing an arithmetic test with a sort test `(M :: L) : Sorted`. Now an operator declared `op insert : Nat Sorted -> Sorted` would be a compile-time-checked promise that insertion preserves sortedness.
+
+One caveat: memberships work on your own constructors, but not reliably on built-in types' special symbols (Maude warns if you try to, say, carve `Even` out of the built-in `Nat` — its `s_` and `_+_` are implemented natively below the level memberships operate on).
