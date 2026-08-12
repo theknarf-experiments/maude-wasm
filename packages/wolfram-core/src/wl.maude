@@ -1,19 +1,21 @@
-*** WL/M: a Wolfram-Language core on Maude. Phase 0 proof of concept.
+*** WL/M: a Wolfram-Language core on Maude. Phases 0-1.
 ***
-*** Expressions are terms of sort Expr; the global rulebase is ordinary
-*** data (Defs) threaded through the evaluator; pattern matching runs on
-*** Maude's own engine via metaMatch against WL-SYNTAX, with WL blanks
-*** translated to meta-variables (sequence blanks become ArgList
-*** variables, so associative matching provides sequence semantics).
+*** Expressions are terms of sort Expr; the global rulebase and attribute
+*** table are ordinary data threaded through the evaluator; pattern
+*** matching runs on Maude's engine via metaMatch against WL-SYNTAX, with
+*** WL blanks translated to meta-variables (sequence blanks become
+*** ArgList variables, so associative matching provides sequence
+*** semantics).
 ***
-*** Deliberate Phase 0 divergences from WL (see docs/wolfram-on-maude.md):
+*** Deliberate divergences from WL (see docs/wolfram-on-maude.md):
 *** - `?? q` has BlankNullSequence (0+) semantics; BlankSequence (1+) and
 ***   head-typed blanks arrive in Phase 2.
 *** - Set/SetDelayed hold their entire lhs (WL evaluates lhs arguments).
-*** - Definition order: ground lhs definitions are tried before pattern
-***   definitions, otherwise in definition order (specificity is 1.5).
-*** - ReplaceAll takes one rule or a List of rules, applied outermost,
-***   once per subtree.
+*** - Orderless canonical order is ours (rank, then structural), not WL's.
+*** - Flat/Orderless affect evaluation-time normalization; matching
+***   modulo Flat/Orderless axioms is still pending (1.2b).
+*** - Definition order: specificity = non-variable node count of the
+***   compiled pattern, descending; ties keep definition order.
 
 fmod WL-SYNTAX is
   protecting INT .
@@ -60,8 +62,48 @@ fmod WL-BINDINGS is
   eq sbE(E, B) = ap(s('Sequence), sbA1(E, B)) [owise] .
 endfm
 
-fmod WL-META is
+*** total order on expressions for Orderless canonicalization
+fmod WL-ORDER is
   protecting WL-BINDINGS .
+  var I J : Int . var Q Q2 : Qid . var Str Str2 : String .
+  var E E2 H H2 : Expr . var A A2 : ArgList .
+
+  op rank : Expr -> Nat .
+  eq rank(I) = 0 .
+  eq rank(str(Str)) = 1 .
+  eq rank(s(Q)) = 2 .
+  eq rank(? Q) = 3 .
+  eq rank(?? Q) = 4 .
+  eq rank(ap(H, A)) = 5 .
+
+  op ltE : Expr Expr -> Bool .
+  op ltA : ArgList ArgList -> Bool .
+  ceq ltE(E, E2) = rank(E) < rank(E2) if rank(E) =/= rank(E2) .
+  eq ltE(I, J) = I < J .
+  eq ltE(str(Str), str(Str2)) = Str < Str2 .
+  eq ltE(s(Q), s(Q2)) = string(Q) < string(Q2) .
+  eq ltE(? Q, ? Q2) = string(Q) < string(Q2) .
+  eq ltE(?? Q, ?? Q2) = string(Q) < string(Q2) .
+  ceq ltE(ap(H, A), ap(H2, A2)) = ltE(H, H2) if H =/= H2 .
+  eq ltE(ap(H, A), ap(H, A2)) = ltA(A, A2) .
+  eq ltE(E, E2) = false [owise] .
+  eq ltA(nilA, nilA) = false .
+  eq ltA(nilA, E :: A) = true .
+  eq ltA(E :: A, nilA) = false .
+  ceq ltA(E :: A, E2 :: A2) = ltE(E, E2) if E =/= E2 .
+  eq ltA(E :: A, E :: A2) = ltA(A, A2) .
+
+  *** insertion sort
+  op sortA : ArgList -> ArgList .
+  op insA : Expr ArgList -> ArgList .
+  eq sortA(nilA) = nilA .
+  eq sortA(E :: A) = insA(E, sortA(A)) .
+  eq insA(E, nilA) = E .
+  eq insA(E, E2 :: A) = if ltE(E2, E) then E2 :: insA(E, A) else E :: E2 :: A fi .
+endfm
+
+fmod WL-META is
+  protecting WL-ORDER .
   protecting META-LEVEL .
 
   op MOD : -> Module [memo] .
@@ -108,6 +150,15 @@ fmod WL-META is
   op compileP : ArgList -> Term .
   eq compileP(A) = p2m(upTerm(A)) .
 
+  *** specificity: count of non-variable nodes in a compiled pattern
+  op spec : Term -> Nat .
+  op specL : TermList -> Nat .
+  eq spec(V) = 0 .
+  eq spec(F[NeTL]) = 1 + specL(NeTL) [owise] .
+  eq spec(T) = 1 [owise] .
+  eq specL((T, TL)) = spec(T) + specL(TL) .
+  eq specL(empty) = 0 .
+
   *** metalevel substitution -> bindings
   op dn : Term ~> ArgList .
   eq dn(T) = downTerm(T, s('$downTermError)) .
@@ -119,58 +170,91 @@ endfm
 fmod WL-EVAL is
   protecting WL-META .
 
-  *** rulebase: compiled lhs pattern (meta term) + rhs; plain cons list
-  *** so trial order is deterministic. Ground lhs definitions sit in
-  *** front of pattern definitions.
+  *** attribute table: a set of (symbol, attribute) pairs
+  sorts SymAttr Attrs .
+  subsort SymAttr < Attrs .
+  op at : Qid Qid -> SymAttr [ctor] .
+  op noAt : -> Attrs [ctor] .
+  op _&&_ : Attrs Attrs -> Attrs [ctor assoc comm id: noAt] .
+
+  *** rulebase: compiled lhs pattern (meta term) + rhs, ordered by
+  *** specificity (descending), ties in definition order
   sorts Def Defs St R .
   op d : Term Expr -> Def [ctor] .
   op noD : -> Defs [ctor] .
   op _|_ : Def Defs -> Defs [ctor prec 70 gather (e E)] .
-  op st : Defs Nat -> St [ctor] .           *** defs, fuel
+  op st : Defs Attrs Nat -> St [ctor] .     *** defs, attributes, fuel
   op r : St ArgList -> R [ctor] .
 
   var S S0 S1 S2 : St . var Ds Ds0 : Defs . var Dd : Def .
   var N : Nat . var I J : Int .
   var E E1 H L Rh Cnd V HV Last : Expr .
   var A A1 AV Rest : ArgList .
-  var Q : Qid . var B : Bnds . var Sb : Substitution .
-  var P UM T : Term . var Str : String .
+  var Q F AT : Qid . var B : Bnds . var Sb : Substitution .
+  var P UM T : Term . var Str : String . var At : Attrs .
+
+  *** ---------------------------------------------------- attributes
+  op hasAttr : Attrs Qid Qid -> Bool .
+  eq hasAttr(at(F, AT) && At, F, AT) = true .
+  eq hasAttr(At, F, AT) = false [owise] .
+  op hasAttrE : Attrs Expr Qid -> Bool .
+  eq hasAttrE(At, s(F), AT) = hasAttr(At, F, AT) .
+  eq hasAttrE(At, E, AT) = false [owise] .
+  op delAt : Attrs Qid Qid -> Attrs .
+  eq delAt(at(F, AT) && At, F, AT) = delAt(At, F, AT) .
+  eq delAt(At, F, AT) = At [owise] .
+  op attrsOf : Attrs Qid -> ArgList .
+  eq attrsOf(at(F, AT) && At, F) = insA(s(AT), attrsOf(At, F)) .
+  eq attrsOf(At, F) = nilA [owise] .
+
+  *** WL builtins ship with attributes
+  op defaultAttrs : -> Attrs .
+  eq defaultAttrs
+    = at('Plus, 'Flat) && at('Plus, 'Orderless) && at('Plus, 'OneIdentity)
+   && at('Times, 'Flat) && at('Times, 'Orderless) && at('Times, 'OneIdentity)
+   && at('Hold, 'HoldAll) && at('HoldForm, 'HoldAll)
+   && at('If, 'HoldRest) && at('Set, 'HoldFirst)
+   && at('SetDelayed, 'HoldAll) && at('CompoundExpression, 'HoldAll)
+   && at('SetAttributes, 'HoldFirst) && at('ClearAttributes, 'HoldFirst)
+   && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold) .
 
   *** ---------------------------------------------------- definitions
-  op isGroundP : Term -> Bool .
-  eq isGroundP(T) = T :: GroundTerm .
-
   op delDef : Defs Term -> Defs .
   eq delDef(noD, P) = noD .
   eq delDef(d(P, Rh) | Ds, P) = delDef(Ds, P) .
   eq delDef(Dd | Ds, P) = Dd | delDef(Ds, P) [owise] .
 
-  op appendD : Defs Def -> Defs .
-  eq appendD(noD, Dd) = Dd | noD .
-  eq appendD(Dd | Ds, Dd) = Dd | Ds .
-  ceq appendD(Dd | Ds, d(P, Rh)) = Dd | appendD(Ds, d(P, Rh)) if Dd =/= d(P, Rh) .
+  *** insert keeping specificity descending; equal scores go after
+  *** existing entries (definition order)
+  op insDef : Defs Def -> Defs .
+  eq insDef(noD, Dd) = Dd | noD .
+  eq insDef(d(P, Rh) | Ds, d(T, E))
+    = if spec(T) > spec(P)
+      then d(T, E) | d(P, Rh) | Ds
+      else d(P, Rh) | insDef(Ds, d(T, E)) fi .
 
   op addDef : St Expr Expr -> St .
-  ceq addDef(st(Ds, N), L, Rh)
-    = if isGroundP(P) then st(d(P, Rh) | delDef(Ds, P), N)
-      else st(appendD(delDef(Ds, P), d(P, Rh)), N) fi
+  ceq addDef(st(Ds, At, N), L, Rh) = st(insDef(delDef(Ds, P), d(P, Rh)), At, N)
     if P := compileP(L) .
 
   *** ---------------------------------------------------- evaluator
   op ev : St Expr -> R .
-  op evA : St ArgList -> R .
   op evSeq : St ArgList Expr -> R .
+  op evArgs : St Expr ArgList -> R .
+  op evAll : St ArgList -> R .
+  op evHeld : St ArgList -> R .
   op apply : St Expr -> R .
   op tryDefs : St Term Defs Expr -> R .
   op builtin : St Expr -> R .
   op ifBr : St Expr ArgList -> R .
 
-  *** heads with nonstandard evaluation, handled before arg evaluation
+  *** heads with hard-wired evaluation, handled before arg evaluation
   op isSpecial : Expr -> Bool .
   eq isSpecial(s('If)) = true .
   eq isSpecial(s('Set)) = true .
   eq isSpecial(s('SetDelayed)) = true .
   eq isSpecial(s('Hold)) = true .
+  eq isSpecial(s('HoldForm)) = true .
   eq isSpecial(s('CompoundExpression)) = true .
   eq isSpecial(E) = false [owise] .
 
@@ -194,69 +278,138 @@ fmod WL-EVAL is
     if r(S1, V) := ev(S0, Rh) .
 
   eq ev(S, ap(s('Hold), A)) = r(S, ap(s('Hold), A)) .
+  eq ev(S, ap(s('HoldForm), A)) = r(S, ap(s('HoldForm), A)) .
 
   eq ev(S, ap(s('CompoundExpression), A)) = evSeq(S, A, s('Null)) .
   eq evSeq(S, nilA, Last) = r(S, Last) .
   ceq evSeq(S0, E :: A, Last) = evSeq(S1, A, V)
     if r(S1, V) := ev(S0, E) .
 
-  *** generic application: evaluate head, then args, then apply rules
-  ceq ev(S0, ap(H, A)) = apply(S2, ap(HV, AV))
+  *** generic application: evaluate head, args per Hold*, splice
+  *** Sequence, flatten (Flat), canonically order (Orderless), apply
+  ceq ev(S0, ap(H, A)) = apply(S2, norm(S2, ap(HV, AV)))
     if not isSpecial(H) /\
        r(S1, HV) := ev(S0, H) /\
-       r(S2, AV) := evA(S1, A) .
+       r(S2, AV) := evArgs(S1, HV, A) .
 
-  eq evA(S, nilA) = r(S, nilA) .
-  ceq evA(S0, E :: A) = r(S2, V :: AV)
-    if r(S1, V) := ev(S0, E) /\ r(S2, AV) := evA(S1, A) .
+  eq evArgs(S, HV, nilA) = r(S, nilA) .
+  ceq evArgs(S, HV, A) = evHeld(S, A)
+    if hasAttrE(third(S), HV, 'HoldAll) .
+  ceq evArgs(S0, HV, E :: A) = r(S1, E :: AV)
+    if hasAttrE(third(S0), HV, 'HoldRest) /\ r(S1, AV) := evHeldTail(S0, E, A) .
+  ceq evArgs(S0, HV, E :: A) = r(S2, V :: AV)
+    if hasAttrE(third(S0), HV, 'HoldFirst) /\
+       r(S1, V) := evHeld1(S0, E) /\ r(S2, AV) := evAll(S1, A) .
+  eq evArgs(S, HV, A) = evAll(S, A) [owise] .
 
-  eq apply(st(Ds, 0), E) = r(st(Ds, 0), s('$Aborted)) .
-  ceq apply(st(Ds, N), E) = tryDefs(st(Ds, N), subj(E), Ds, E) if N > 0 .
+  op third : St -> Attrs .
+  eq third(st(Ds, At, N)) = At .
 
-  *** first definition whose pattern matches wins; a successful
-  *** application consumes one unit of fuel and re-evaluates
-  ceq tryDefs(st(Ds0, s N), UM, d(P, Rh) | Ds, E)
-    = ev(st(Ds0, N), sbE(Rh, s2b(Sb)))
+  *** held tail helper: first arg evaluated, rest held
+  op evHeldTail : St Expr ArgList -> R .
+  ceq evHeldTail(S0, E, A) = r(S2, V :: AV)
+    if r(S1, V) := ev(S0, E) /\ r(S2, AV) := evHeld(S1, A) .
+
+  eq evAll(S, nilA) = r(S, nilA) .
+  ceq evAll(S0, E :: A) = r(S2, V :: AV)
+    if r(S1, V) := ev(S0, E) /\ r(S2, AV) := evAll(S1, A) .
+
+  *** held args still honor Evaluate[...]
+  op evHeld1 : St Expr -> R .
+  eq evHeld1(S, ap(s('Evaluate), E)) = ev(S, E) .
+  eq evHeld1(S, E) = r(S, E) [owise] .
+  eq evHeld(S, nilA) = r(S, nilA) .
+  ceq evHeld(S0, E :: A) = r(S2, V :: AV)
+    if r(S1, V) := evHeld1(S0, E) /\ r(S2, AV) := evHeld(S1, A) .
+
+  *** normalization pipeline
+  op norm : St Expr -> Expr .
+  ceq norm(st(Ds, At, N), ap(s(F), A))
+    = ap(s(F), sortIf(At, F, flatIf(At, F, spliceIf(At, F, A))))
+    if true .
+  eq norm(S, E) = E [owise] .
+
+  op spliceIf : Attrs Qid ArgList -> ArgList .
+  eq spliceIf(At, F, A)
+    = if hasAttr(At, F, 'SequenceHold) then A else spliceA(A) fi .
+  op spliceA : ArgList -> ArgList .
+  eq spliceA(nilA) = nilA .
+  eq spliceA(ap(s('Sequence), A1) :: A) = A1 :: spliceA(A) .
+  eq spliceA(E :: A) = E :: spliceA(A) [owise] .
+
+  op flatIf : Attrs Qid ArgList -> ArgList .
+  eq flatIf(At, F, A) = if hasAttr(At, F, 'Flat) then flatA(F, A) else A fi .
+  op flatA : Qid ArgList -> ArgList .
+  eq flatA(F, nilA) = nilA .
+  eq flatA(F, ap(s(F), A1) :: A) = flatA(F, A1) :: flatA(F, A) .
+  eq flatA(F, E :: A) = E :: flatA(F, A) [owise] .
+
+  op sortIf : Attrs Qid ArgList -> ArgList .
+  eq sortIf(At, F, A) = if hasAttr(At, F, 'Orderless) then sortA(A) else A fi .
+
+  eq apply(st(Ds, At, 0), E) = r(st(Ds, At, 0), s('$Aborted)) .
+  ceq apply(st(Ds, At, N), E) = tryDefs(st(Ds, At, N), subj(E), Ds, E) if N > 0 .
+
+  *** first (most specific) definition whose pattern matches wins; a
+  *** successful application consumes fuel and re-evaluates
+  ceq tryDefs(st(Ds0, At, s N), UM, d(P, Rh) | Ds, E)
+    = ev(st(Ds0, At, N), sbE(Rh, s2b(Sb)))
     if Sb := metaMatch(MOD, P, UM, nil, 0) .
   eq tryDefs(S, UM, Dd | Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
   eq tryDefs(S, UM, noD, E) = builtin(S, E) .
 
   *** ---------------------------------------------------- builtins
-  op allInt : ArgList -> Bool .
-  eq allInt(nilA) = true .
-  eq allInt(I :: A) = allInt(A) .
-  eq allInt(A) = false [owise] .
-  op sumA : ArgList -> Int .
-  eq sumA(nilA) = 0 .
-  eq sumA(I :: A) = I + sumA(A) .
-  op prodA : ArgList -> Int .
-  eq prodA(nilA) = 1 .
-  eq prodA(I :: A) = I * prodA(A) .
   op lenA : ArgList -> Nat .
   eq lenA(nilA) = 0 .
   eq lenA(E :: A) = 1 + lenA(A) .
 
-  ceq builtin(S, ap(s('Plus), A)) = r(S, sumA(A)) if allInt(A) .
-  ceq builtin(S, ap(s('Times), A)) = r(S, prodA(A)) if allInt(A) .
-  ceq builtin(S, ap(s('Power), I :: J)) = r(S, I ^ J) if J >= 0 .
-  ceq builtin(S, ap(s('Less), I :: J)) = r(S, bool2wl(I < J)) if true .
-  ceq builtin(S, ap(s('Greater), I :: J)) = r(S, bool2wl(I > J)) if true .
-  ceq builtin(S, ap(s('LessEqual), I :: J)) = r(S, bool2wl(I <= J)) if true .
-  ceq builtin(S, ap(s('GreaterEqual), I :: J)) = r(S, bool2wl(I >= J)) if true .
-  eq builtin(S, ap(s('Equal), I :: J)) = r(S, bool2wl(I == J)) .
-  ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, s('True)) if E == E1 .
-
   op bool2wl : Bool -> Expr .
   eq bool2wl(true) = s('True) .
   eq bool2wl(false) = s('False) .
+
+  *** Plus/Times: args arrive canonically ordered (ints first); fold the
+  *** numeric prefix, keep the symbolic tail
+  eq builtin(S, ap(s('Plus), nilA)) = r(S, 0) .
+  eq builtin(S, ap(s('Plus), E)) = r(S, E) .
+  eq builtin(S, ap(s('Plus), I :: J :: A)) = builtin(S, ap(s('Plus), (I + J) :: A)) .
+  ceq builtin(S, ap(s('Plus), 0 :: A)) = builtin(S, ap(s('Plus), A)) if lenA(A) >= 1 .
+  eq builtin(S, ap(s('Times), nilA)) = r(S, 1) .
+  eq builtin(S, ap(s('Times), E)) = r(S, E) .
+  eq builtin(S, ap(s('Times), I :: J :: A)) = builtin(S, ap(s('Times), (I * J) :: A)) .
+  ceq builtin(S, ap(s('Times), 1 :: A)) = builtin(S, ap(s('Times), A)) if lenA(A) >= 1 .
+  ceq builtin(S, ap(s('Times), 0 :: A)) = r(S, 0) if lenA(A) >= 1 .
+
+  ceq builtin(S, ap(s('Power), I :: J)) = r(S, I ^ J) if J >= 0 .
+  eq builtin(S, ap(s('Less), I :: J)) = r(S, bool2wl(I < J)) .
+  eq builtin(S, ap(s('Greater), I :: J)) = r(S, bool2wl(I > J)) .
+  eq builtin(S, ap(s('LessEqual), I :: J)) = r(S, bool2wl(I <= J)) .
+  eq builtin(S, ap(s('GreaterEqual), I :: J)) = r(S, bool2wl(I >= J)) .
+  eq builtin(S, ap(s('Equal), I :: J)) = r(S, bool2wl(I == J)) .
+  ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, s('True)) if E == E1 .
 
   eq builtin(S, ap(s('Head), ap(H, A))) = r(S, H) .
   eq builtin(S, ap(s('Head), I)) = r(S, s('Integer)) .
   eq builtin(S, ap(s('Head), str(Str))) = r(S, s('String)) .
   eq builtin(S, ap(s('Head), s(Q))) = r(S, s('Symbol)) .
   eq builtin(S, ap(s('Length), ap(H, A))) = r(S, lenA(A)) .
-  ceq builtin(S, ap(s('Length), E)) = r(S, 0) if E :: Expr /\ not (E :: Int) [owise] .
   eq builtin(S, ap(s('Length), I)) = r(S, 0) .
+  eq builtin(S, ap(s('Length), str(Str))) = r(S, 0) .
+  eq builtin(S, ap(s('Length), s(Q))) = r(S, 0) .
+
+  eq builtin(S, ap(s('Evaluate), E)) = r(S, E) .
+
+  *** attribute builtins
+  eq builtin(st(Ds, At, N), ap(s('Attributes), s(F)))
+    = r(st(Ds, At, N), ap(s('List), attrsOf(At, F))) .
+  eq builtin(st(Ds, At, N), ap(s('SetAttributes), s(F) :: s(AT)))
+    = r(st(Ds, at(F, AT) && delAt(At, F, AT), N), s('Null)) .
+  eq builtin(st(Ds, At, N), ap(s('SetAttributes), s(F) :: ap(s('List), A)))
+    = r(st(Ds, addAts(At, F, A), N), s('Null)) .
+  op addAts : Attrs Qid ArgList -> Attrs .
+  eq addAts(At, F, nilA) = At .
+  eq addAts(At, F, s(AT) :: A) = addAts(at(F, AT) && delAt(At, F, AT), F, A) .
+  eq builtin(st(Ds, At, N), ap(s('ClearAttributes), s(F) :: s(AT)))
+    = r(st(Ds, delAt(At, F, AT), N), s('Null)) .
 
   *** ReplaceAll: expr /. rule(s); outermost, once per subtree; the
   *** replaced result is re-evaluated (guarded: only when changed)
@@ -288,12 +441,14 @@ fmod WL-EVAL is
   *** ---------------------------------------------------- driver
   op initialFuel : -> Nat .
   eq initialFuel = 1000000 .
+  op initialState : -> St .
+  eq initialState = st(noD, defaultAttrs, initialFuel) .
 
   op run : ArgList -> Expr .
-  ceq run(A) = V if r(S, V) := evSeq(st(noD, initialFuel), A, s('Null)) .
+  ceq run(A) = V if r(S, V) := evSeq(initialState, A, s('Null)) .
 
   op runAll : ArgList -> ArgList .
-  eq runAll(A) = runAll2(st(noD, initialFuel), A) .
+  eq runAll(A) = runAll2(initialState, A) .
   op runAll2 : St ArgList -> ArgList .
   eq runAll2(S, nilA) = nilA .
   ceq runAll2(S0, E :: A) = V :: runAll2(S1, A)

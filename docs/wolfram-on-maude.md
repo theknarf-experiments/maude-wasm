@@ -107,32 +107,51 @@ What leaked, and the decisions it forced:
   expression (outermost) — our implementation agrees with real WL here
   by construction.
 
-## Phase 1 — Faithful evaluator semantics
+## Phase 1 — Faithful evaluator semantics — **mostly done**
 
-- [ ] **1.1 Attributes table** with WL names: `Flat`, `Orderless`,
+Implemented in `wl.maude` (WL-ORDER + attribute-aware WL-EVAL); the
+conformance table in `test/wl.test.ts` covers each item below.
+
+- [x] **1.1 Attributes table** with WL names: `Flat`, `Orderless`,
       `OneIdentity`, `HoldAll/HoldFirst/HoldRest`, `Listable`,
       `SequenceHold`, `Protected`. `Attributes[f]`, `SetAttributes`,
       `ClearAttributes`.
-- [ ] **1.2 Flat/Orderless via axioms.** When a symbol is
+- [~] **1.2 Flat/Orderless.** *Done:* evaluation-time flattening,
+      canonical ordering (our order: rank then structural), Plus/Times
+      partial numeric folding over the canonical form, OneIdentity-style
+      single-argument collapse as Plus/Times builtin rules. *Pending
+      (1.2b):* matching modulo Flat/Orderless axioms via a synthesized
+      meta-module with `assoc`/`comm` operators per attributed symbol.
+      Original task: When a symbol is
       `Flat`/`Orderless`, synthesize the meta-operator with
       `assoc`/`comm` so Maude's matcher does the work; canonical
       ordering of `Orderless` args on evaluation (define and document
       our canonical order; it will differ from WL's).
-- [ ] **1.3 Hold semantics.** Skip argument evaluation per `Hold*`;
+- [~] **1.3 Hold semantics.** *Done:* HoldAll/HoldFirst/HoldRest via
+      the attribute table, `Hold`/`HoldForm` inert, `Evaluate` override
+      in held positions. *Pending:* `Unevaluated` splicing semantics.
+      Original task: Skip argument evaluation per `Hold*`;
       implement `Hold`, `HoldForm`, `Unevaluated` (argument splicing
       semantics), `Evaluate` override.
-- [ ] **1.4 `Sequence` splicing** into argument lists (and its
+- [x] **1.4 `Sequence` splicing** into argument lists (and its
       interaction with `SequenceHold` and `Hold*`).
-- [ ] **1.5 Definition ordering.** WL's specificity order for
+- [x] **1.5 Definition ordering.** (Specificity = non-variable node
+      count of the compiled pattern, descending; ties keep definition
+      order. Cruder than WL's ordering but stable and monotonic.)
+      Original task: WL's specificity order for
       down-values (more specific patterns tried first, ties by
       definition order). Implement the specificity comparator; property
       test: reordering definition entry never changes which rule fires
       when specificities differ.
 - [ ] **1.6 Up-values** (`f /: g[f[x_]] := ...`) and the evaluation
       sequence (up-values of args before down-values of head).
-- [ ] **1.7 Iteration/recursion limits** (`$IterationLimit`,
+- [~] **1.7 Iteration/recursion limits** (fuel bound with `$Aborted`
+      exists; WL-style `Hold` truncation and `$RecursionLimit` split
+      pending). Original task: (`$IterationLimit`,
       `$RecursionLimit`) with WL-style `Hold` truncation on overflow.
-- [ ] **1.8 Conformance harness.** A table-driven test suite
+- [x] **1.8 Conformance harness.** (Table-driven in
+      `test/wl.test.ts`; external reference comparison not wired.)
+      Original task: A table-driven test suite
       (input WL expr → expected InputForm) that runs against both WL/M
       and, optionally, a reference implementation (Mathics or WolframScript
       if present on the dev machine) to triage divergences into
