@@ -17,7 +17,7 @@ fetch() {
   fi
   if [ ! -f "$out" ]; then
     echo "⇩ downloading $out"
-    curl -fL --retry 3 -o "$out" "$url"
+    curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o "$out" "$url"
   fi
   echo "⇪ extracting $out"
   tar xf "$out"
