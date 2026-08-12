@@ -248,7 +248,9 @@ fmod WL-EVAL is
    && at('SetAttributes, 'HoldFirst) && at('ClearAttributes, 'HoldFirst)
    && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold)
    && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest)
-   && at('RuleDelayed, 'HoldRest) && at('Function, 'HoldAll) .
+   && at('RuleDelayed, 'HoldRest) && at('Function, 'HoldAll)
+   && at('While, 'HoldAll) && at('Do, 'HoldAll) && at('Table, 'HoldAll)
+   && at('TagSetDelayed, 'HoldAll) && at('UpSetDelayed, 'HoldAll) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -405,7 +407,7 @@ fmod WL-EVAL is
   *** atoms and inert forms
   eq ev(S, I) = r(S, I) .
   eq ev(S, str(Str)) = r(S, str(Str)) .
-  eq ev(S, s(Q)) = r(S, s(Q)) .
+  eq ev(S, s(Q)) = apply(S, s(Q)) .
   eq ev(S, ? Q) = r(S, ? Q) .
   eq ev(S, ?? Q) = r(S, ?? Q) .
   eq ev(S, ?h(Q, F)) = r(S, ?h(Q, F)) .
@@ -682,6 +684,83 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('First), ap(H, E :: A))) = r(S, E) .
   eq builtin(S, ap(s('Rest), ap(H, E :: A))) = r(S, ap(H, A)) .
   eq builtin(S, ap(s('Total), ap(H, A))) = ev(S, ap(s('Plus), A)) .
+
+  *** control flow: builtins receive held arguments (HoldAll) and
+  *** drive evaluation themselves, fuel-bounded
+  op whileB : St Expr ArgList -> R .
+  eq whileB(st(Ds, At, 0), Cnd, A) = r(st(Ds, At, 0), s('$Aborted)) .
+  ceq whileB(st(Ds, At, s N), Cnd, A)
+    = if V == s('True) then whileNext(S1, Cnd, A) else r(S1, s('Null)) fi
+    if r(S1, V) := ev(st(Ds, At, N), Cnd) .
+  op whileNext : St Expr ArgList -> R .
+  ceq whileNext(S0, Cnd, A) = whileB(S1, Cnd, A)
+    if r(S1, V) := evSeq(S0, A, s('Null)) .
+  eq builtin(S, ap(s('While), Cnd :: A)) = whileB(S, Cnd, A) .
+
+  op doIter : St Expr Qid Int Int -> R .
+  ceq doIter(S0, E, Q, I, J) = doIter(S1, E, Q, I + 1, J)
+    if I <= J /\ r(S1, V) := ev(S0, sbE(E, bnd(Q, I))) .
+  ceq doIter(S, E, Q, I, J) = r(S, s('Null)) if I > J .
+  eq builtin(S, ap(s('Do), E :: ap(s('List), s(Q) :: J))) = doIter(S, E, Q, 1, J) .
+  ceq builtin(S0, ap(s('Do), E :: I)) = doN(S0, E, I) if I >= 0 .
+  op doN : St Expr Nat -> R .
+  eq doN(S, E, 0) = r(S, s('Null)) .
+  ceq doN(S0, E, s N) = doN(S1, E, N)
+    if r(S1, V) := ev(S0, E) .
+
+  op tableIter : St Expr Qid Int Int -> R .
+  ceq tableIter(S0, E, Q, I, J)
+    = tableCons(S0, E, Q, I, J) if I <= J .
+  ceq tableIter(S, E, Q, I, J) = r(S, nilA) if I > J .
+  op tableCons : St Expr Qid Int Int -> R .
+  ceq tableCons(S0, E, Q, I, J) = r(S2, V :: AV)
+    if r(S1, V) := ev(S0, sbE(E, bnd(Q, I))) /\
+       r(S2, AV) := tableIter(S1, E, Q, I + 1, J) .
+  ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: J)))
+    = r(S1, ap(s('List), AV))
+    if r(S1, AV) := tableIter(S0, E, Q, 1, J) .
+
+  *** iteration combinators (args arrive evaluated - no Hold)
+  op foldB : St Expr Expr ArgList -> R .
+  eq foldB(S, H, E, nilA) = r(S, E) .
+  ceq foldB(S0, H, E, E1 :: A) = foldB(S1, H, V, A)
+    if r(S1, V) := ev(S0, ap(H, E :: E1)) .
+  eq builtin(S, ap(s('Fold), H :: E :: ap(E1, A))) = foldB(S, H, E, A) .
+  op nestB : St Expr Expr Nat -> R .
+  eq nestB(S, H, E, 0) = r(S, E) .
+  ceq nestB(S0, H, E, s N) = nestB(S1, H, V, N)
+    if r(S1, V) := ev(S0, ap(H, E)) .
+  ceq builtin(S, ap(s('Nest), H :: E :: I)) = nestB(S, H, E, I) if I >= 0 .
+  op nestL : St Expr Expr Nat -> R .
+  eq nestL(S, H, E, 0) = r(S, E) .
+  ceq nestL(S0, H, E, s N) = r(S2, E :: AV)
+    if r(S1, V) := ev(S0, ap(H, E)) /\
+       r(S2, AV) := nestL(S1, H, V, N) .
+  ceq builtin(S0, ap(s('NestList), H :: E :: I)) = r(S1, ap(s('List), AV))
+    if I >= 0 /\ r(S1, AV) := nestL(S0, H, E, I) .
+
+  op selectB : St Expr ArgList -> R .
+  eq selectB(S, H, nilA) = r(S, nilA) .
+  ceq selectB(S0, H, E :: A) = selCons(S1, V, E, H, A)
+    if r(S1, V) := ev(S0, ap(H, E)) .
+  op selCons : St Expr Expr Expr ArgList -> R .
+  ceq selCons(S0, V, E, H, A)
+    = if V == s('True) then r(S1, E :: AV) else r(S1, AV) fi
+    if r(S1, AV) := selectB(S0, H, A) .
+  ceq builtin(S0, ap(s('Select), ap(E1, A) :: H)) = r(S1, ap(E1, AV))
+    if r(S1, AV) := selectB(S0, H, A) .
+
+  op flatAll : Expr ArgList -> ArgList .
+  eq flatAll(H, nilA) = nilA .
+  eq flatAll(H, ap(H, A) :: A1) = flatAll(H, A) :: flatAll(H, A1) .
+  eq flatAll(H, E :: A1) = E :: flatAll(H, A1) [owise] .
+  eq builtin(S, ap(s('Flatten), ap(H, A))) = r(S, ap(H, flatAll(H, A))) .
+  eq builtin(S, ap(s('Join), ap(H, A) :: ap(H, A1))) = r(S, ap(H, A :: A1)) .
+
+  *** up-values as sugar: the shared rulebase means dispatch-before-
+  *** builtins already gives up-value behavior (1.6 approximation)
+  eq builtin(S, ap(s('TagSetDelayed), s(F) :: L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
+  eq builtin(S, ap(s('UpSetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
 
   *** anything else is inert
   eq builtin(S, E) = r(S, E) [owise] .

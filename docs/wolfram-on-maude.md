@@ -143,8 +143,12 @@ conformance table in `test/wl.test.ts` covers each item below.
       definition order). Implement the specificity comparator; property
       test: reordering definition entry never changes which rule fires
       when specificities differ.
-- [ ] **1.6 Up-values** (`f /: g[f[x_]] := ...`) and the evaluation
-      sequence (up-values of args before down-values of head).
+- [~] **1.6 Up-values.** *Done as sugar:* `TagSetDelayed`/
+      `UpSetDelayed` add to the shared rulebase; because definitions
+      dispatch before builtins, up-value behavior (overriding the outer
+      head for specific inner heads) falls out. *Pending:* per-symbol
+      storage, the exact up-before-down trial order against competing
+      down-values, `Protected` interaction.
 - [~] **1.7 Iteration/recursion limits** (fuel bound with `$Aborted`
       exists; WL-style `Hold` truncation and `$RecursionLimit` split
       pending). Original task: (`$IterationLimit`,
@@ -211,15 +215,18 @@ conformance table in `test/wl.test.ts` covers each item below.
       (binding via the substitution machinery) and `Function[body]` with
       `Slot[n]` (slots do not reach into nested Function bodies, per
       WL). *Pending:* `##` slot sequences, `Function` attributes.
-- [ ] **3.3 Control flow**: `CompoundExpression`, `While`, `Do`, `For`,
-      `Switch`, `Which`, `Return`, `Break`, `Continue`.
+- [~] **3.3 Control flow.** *Done:* `CompoundExpression`, `While`
+      (fuel-bounded), `Do` (count + single-iterator forms), plus
+      iteration combinators `Table`/`Nest`/`NestList`/`Fold`.
+      *Pending:* `For`, `Switch`, `Which`, `Return`, `Break`,
+      `Continue`.
 - [ ] **3.4 `Throw`/`Catch`** with tags — likely the strategy language
       or an explicit evaluator continuation encoding; pick after a
       spike.
-- [ ] **3.5 Symbol state**: own-values, `Unset`, `Clear` vs
-      `ClearAll`, `Protected` enforcement, contexts as Qid prefixes
-      (`` System` ``, `` Global` ``) with `$Context`/`$ContextPath`
-      resolution (minimal version).
+- [~] **3.5 Symbol state.** *Done:* own-values (`x = 5` — symbols
+      evaluate through the rulebase; imperative `While` loops over
+      mutable symbols work). *Pending:* `Unset`, `Clear` vs `ClearAll`,
+      `Protected` enforcement, contexts.
 - [ ] **3.6 Messages**: `Message`, `Quiet`, `Check`, message name
       resolution — plumb through the evaluator as effects in the state
       term.
@@ -244,11 +251,11 @@ conformance table in `test/wl.test.ts` covers each item below.
 ## Phase 5 — Standard library (written in WL/M itself where possible)
 
 - [~] **5.1 Structural.** *Done:* `Map`, `Apply`, `Range`, `First`,
-      `Rest`, `Total`. *Pending:* `MapThread`, `Thread`,
-      `Fold`/`FoldList`, `Nest`/`NestList`/`NestWhile`, `FixedPoint`,
-      `Select`, `Sort` (with ordering functions), `GroupBy`, `Flatten`
-      (with levels), `Partition`, `Transpose`, `Table`, `Join`,
-      `Riffle`, `Tuples`.
+      `Rest`, `Total`, `Fold`, `Nest`, `NestList`, `Select`, `Flatten`
+      (all levels), `Join`, `Table` (single iterator). *Pending:*
+      `MapThread`, `Thread`, `FoldList`, `NestWhile`, `FixedPoint`,
+      `Sort` (with ordering functions), `GroupBy`, `Partition`,
+      `Transpose`, `Riffle`, `Tuples`, multi-iterator `Table`.
 - [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).
 - [ ] **5.3 Symbolic basics**: `Expand`, `Together` (polynomial-level),
       `D` (differentiation is a small rule set), `Collect`,

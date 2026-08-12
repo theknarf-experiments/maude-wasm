@@ -277,6 +277,48 @@ const cases: Array<[string, string, string]> = [
        ap(s('Total), ap(s('List), 1 :: 2 :: 3 :: 4)))`,
     "ap(s('List), 6 :: 7 :: ap(s('List), 8 :: 9) :: 10)",
   ],
+  [
+    "own-values + While with mutable state",
+    `ap(s('Set), s('i) :: 0) ::
+     ap(s('Set), s('total) :: 0) ::
+     ap(s('While), ap(s('Less), s('i) :: 5) ::
+       ap(s('Set), s('total) :: ap(s('Plus), s('total) :: s('i))) ::
+       ap(s('Set), s('i) :: ap(s('Plus), s('i) :: 1))) ::
+     s('total)`,
+    "10",
+  ],
+  [
+    "Do iterator and Table",
+    `ap(s('Set), s('acc) :: 0) ::
+     ap(s('Do), ap(s('Set), s('acc) :: ap(s('Plus), s('acc) :: s('k))) ::
+       ap(s('List), s('k) :: 4)) ::
+     ap(s('List), s('acc) ::
+       ap(s('Table), ap(s('Power), s('n) :: 2) :: ap(s('List), s('n) :: 4)))`,
+    "ap(s('List), 10 :: ap(s('List), 1 :: 4 :: 9 :: 16))",
+  ],
+  [
+    "Fold, Nest, NestList",
+    `ap(s('List),
+       ap(s('Fold), s('Plus) :: 0 :: ap(s('List), 1 :: 2 :: 3 :: 4)) ::
+       ap(s('Nest), ap(s('Function), ap(s('Times), ap(s('Slot), 1) :: 2)) :: 1 :: 10) ::
+       ap(s('NestList), ap(s('Function), ap(s('Times), ap(s('Slot), 1) :: 2)) :: 1 :: 3))`,
+    "ap(s('List), 10 :: 1024 :: ap(s('List), 1 :: 2 :: 4 :: 8))",
+  ],
+  [
+    "Select, Flatten, Join",
+    `ap(s('List),
+       ap(s('Select), ap(s('Range), 6) :: s('EvenQ)) ::
+       ap(s('Flatten), ap(s('List), 1 :: ap(s('List), 2 :: ap(s('List), 3 :: 4)) :: 5)) ::
+       ap(s('Join), ap(s('List), 1 :: 2) :: ap(s('List), 3 :: 4)))`,
+    "ap(s('List), ap(s('List), 2 :: 4 :: 6) :: ap(s('List), 1 :: 2 :: 3 :: 4 :: 5) :: ap(s('List), 1 :: 2 :: 3 :: 4))",
+  ],
+  [
+    "up-value sugar dispatches on inner head",
+    `ap(s('UpSetDelayed), ap(s('area), ap(s('disk), ? 'r)) ::
+       ap(s('Times), ap(s('Power), s('r) :: 2) :: s('Pi))) ::
+     ap(s('area), ap(s('disk), 3))`,
+    "ap(s('Times), 9 :: s('Pi))",
+  ],
 ];
 
 describe("WL/M conformance", () => {
