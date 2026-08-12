@@ -1,3 +1,8 @@
+import { javascript } from "@codemirror/lang-javascript";
+import { Prec } from "@codemirror/state";
+import { keymap } from "@codemirror/view";
+import CodeMirror from "@uiw/react-codemirror";
+import type { MaudeResult } from "maude-wasm";
 import {
   createContext,
   useCallback,
@@ -5,11 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { MaudeResult } from "maude-wasm";
-import CodeMirror from "@uiw/react-codemirror";
-import { javascript } from "@codemirror/lang-javascript";
-import { keymap } from "@codemirror/view";
-import { Prec } from "@codemirror/state";
 import { maudeLanguage } from "./maude-language";
 import type { Op } from "./protocol";
 import { CancelledError, type useMaude } from "./useMaude";
@@ -76,11 +76,11 @@ export function Snippet({ code }: { code: string }) {
         basicSetup={{ foldGutter: false, lineNumbers: true }}
       />
       <div className="snippet-bar">
-        <button onClick={run} disabled={maude.running}>
+        <button type="button" onClick={run} disabled={maude.running}>
           {maude.running ? "Running…" : "Run ▶"}
         </button>
         {maude.running && (
-          <button className="cancel" onClick={maude.cancel}>
+          <button type="button" className="cancel" onClick={maude.cancel}>
             Cancel
           </button>
         )}
@@ -103,7 +103,13 @@ function stripBye(stdout: string): string {
 }
 
 /** A read-only, syntax-highlighted TypeScript listing. */
-export function TsListing({ code, attached }: { code: string; attached?: boolean }) {
+export function TsListing({
+  code,
+  attached,
+}: {
+  code: string;
+  attached?: boolean;
+}) {
   return (
     <CodeMirror
       className={`editor listing-editor${attached ? " attached" : ""}`}
@@ -160,11 +166,11 @@ export function ApiSnippet({
     <div className="snippet">
       <TsListing code={listing} attached />
       <div className="snippet-bar">
-        <button onClick={run} disabled={maude.running}>
+        <button type="button" onClick={run} disabled={maude.running}>
           {maude.running ? "Running…" : "Run ▶"}
         </button>
         {maude.running && (
-          <button className="cancel" onClick={maude.cancel}>
+          <button type="button" className="cancel" onClick={maude.cancel}>
             Cancel
           </button>
         )}

@@ -26,9 +26,9 @@ describe("Maude interpreter", () => {
     });
 
     it("throws MaudeCommandError on nonsense", async () => {
-      await expect(m.reduce("]] nonsense [[", { module: "NAT" })).rejects.toThrow(
-        /no result/,
-      );
+      await expect(
+        m.reduce("]] nonsense [[", { module: "NAT" }),
+      ).rejects.toThrow(/no result/);
     });
   });
 

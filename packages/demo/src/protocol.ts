@@ -1,7 +1,11 @@
-
 export type Op =
   | { method: "reduce" | "parse"; term: string; module?: string }
-  | { method: "rewrite" | "frewrite"; term: string; module?: string; bound?: number }
+  | {
+      method: "rewrite" | "frewrite";
+      term: string;
+      module?: string;
+      bound?: number;
+    }
   | {
       method: "search";
       subject: string;
@@ -12,7 +16,13 @@ export type Op =
       suchThat?: string;
       module?: string;
     }
-  | { method: "match"; pattern: string; subject: string; extension?: boolean; module?: string }
+  | {
+      method: "match";
+      pattern: string;
+      subject: string;
+      extension?: boolean;
+      module?: string;
+    }
   | { method: "unify"; problem: string; module?: string }
   | { method: "variants"; term: string; module?: string }
   | { method: "modelCheck"; initial: string; formula: string; module?: string }
@@ -25,4 +35,3 @@ export type WorkerRequest =
 export type WorkerResponse =
   | { id: number; result: unknown }
   | { id: number; error: string };
-

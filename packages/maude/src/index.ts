@@ -1,9 +1,9 @@
-export {
-  runMaude,
-  type MaudeResult,
-  type MaudeOptions,
-} from "./run.js";
 export * from "./interpreter.js";
+export {
+  type MaudeOptions,
+  type MaudeResult,
+  runMaude,
+} from "./run.js";
 export {
   MaudeWorkerSession,
   type WorkerSessionOptions,

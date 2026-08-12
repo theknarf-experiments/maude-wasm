@@ -1,7 +1,7 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 import { runMaude } from "maude-wasm";
+import { describe, expect, it } from "vitest";
 
 // Every ```maude fence in the tutorial must run cleanly against the real
 // engine — no parse warnings, no errors, and actual output. This keeps

@@ -1,4 +1,3 @@
-
 export interface CommandOptions {
   /** Module to evaluate in, e.g. "NAT". Defaults to the last one defined. */
   module?: string;
@@ -229,7 +228,12 @@ export abstract class MaudeCommands {
     const { output, stderr } = await this.exec(command);
     const m = /^([^\n]+?): (.*)$/s.exec(output);
     if (!m) {
-      throw new MaudeCommandError("term did not parse", command, output, stderr);
+      throw new MaudeCommandError(
+        "term did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     return { sort: m[1], term: m[2].trim(), stats: null, raw: output };
   }
@@ -247,8 +251,16 @@ export abstract class MaudeCommands {
     const cond = opts.suchThat ? ` such that ${opts.suchThat}` : "";
     const command = `search ${bounds}${inModule(opts)}${subject} ${opts.arrow ?? "=>*"} ${pattern}${cond} .`;
     const { output, stderr } = await this.exec(command);
-    if (/No parse|bad token/.test(stderr) && !/Solution|No solution/.test(output)) {
-      throw new MaudeCommandError("search did not parse", command, output, stderr);
+    if (
+      /No parse|bad token/.test(stderr) &&
+      !/Solution|No solution/.test(output)
+    ) {
+      throw new MaudeCommandError(
+        "search did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     const solutions: SearchSolution[] = [];
     for (const block of output.split(/\n\n+/)) {
@@ -277,7 +289,12 @@ export abstract class MaudeCommands {
     const command = `${verb} ${bracket(opts.bound)}${inModule(opts)}${pattern} <=? ${subject} .`;
     const { output, stderr } = await this.exec(command);
     if (!/Matcher|No match/.test(output)) {
-      throw new MaudeCommandError("match did not parse", command, output, stderr);
+      throw new MaudeCommandError(
+        "match did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     const matchers = output
       .split(/\n\n+/)
@@ -287,11 +304,19 @@ export abstract class MaudeCommands {
   }
 
   /** `unify` — order-sorted unification; `problem` like "t1 =? t2". */
-  async unify(problem: string, opts: CommandOptions = {}): Promise<UnifyResult> {
+  async unify(
+    problem: string,
+    opts: CommandOptions = {},
+  ): Promise<UnifyResult> {
     const command = `unify ${inModule(opts)}${problem} .`;
     const { output, stderr } = await this.exec(command);
     if (!/Unifier|No unifier/.test(output)) {
-      throw new MaudeCommandError("unify did not parse", command, output, stderr);
+      throw new MaudeCommandError(
+        "unify did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     const unifiers = output
       .split(/\n\n+/)
@@ -308,7 +333,12 @@ export abstract class MaudeCommands {
     const command = `get variants ${inModule(opts)}${term} .`;
     const { output, stderr } = await this.exec(command);
     if (!/Variant|No variants/.test(output)) {
-      throw new MaudeCommandError("get variants failed", command, output, stderr);
+      throw new MaudeCommandError(
+        "get variants failed",
+        command,
+        output,
+        stderr,
+      );
     }
     const variants: Variant[] = [];
     for (const block of output.split(/\n\n+/)) {
@@ -369,7 +399,12 @@ export abstract class MaudeCommands {
     const command = `${verb} ${bracket(opts.bound)}${inModule(opts)}${term} using ${strategy} .`;
     const { output, stderr } = await this.exec(command);
     if (!/Solution|No solution/.test(output)) {
-      throw new MaudeCommandError("srewrite did not parse", command, output, stderr);
+      throw new MaudeCommandError(
+        "srewrite did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     const solutions: SrewriteSolution[] = [];
     for (const block of output.split(/\n\n+/)) {
@@ -398,7 +433,12 @@ export abstract class MaudeCommands {
     const command = `${filtered}variant unify ${bracket(opts.bound)}${inModule(opts)}${problem} .`;
     const { output, stderr } = await this.exec(command);
     if (!/Unifier|No unifier/.test(output)) {
-      throw new MaudeCommandError("variant unify did not parse", command, output, stderr);
+      throw new MaudeCommandError(
+        "variant unify did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     const unifiers = output
       .split(/\n\n+/)
@@ -425,7 +465,12 @@ export abstract class MaudeCommands {
     const command = `${fold}vu-narrow ${bounds}${inModule(opts)}${subject} ${opts.arrow ?? "=>*"} ${target} .`;
     const { output, stderr } = await this.exec(command);
     if (!/Solution|No solution/.test(output)) {
-      throw new MaudeCommandError("vu-narrow did not parse", command, output, stderr);
+      throw new MaudeCommandError(
+        "vu-narrow did not parse",
+        command,
+        output,
+        stderr,
+      );
     }
     const solutions: NarrowSolution[] = [];
     for (const block of output.split(/\n\n+/)) {

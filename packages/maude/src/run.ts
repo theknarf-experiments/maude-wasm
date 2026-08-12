@@ -72,7 +72,13 @@ export async function runMaude(
 
   let exitCode = 0;
   try {
-    exitCode = module.callMain(["-no-banner", "-no-wrap", "-no-ansi-color", "-batch", INPUT_PATH]);
+    exitCode = module.callMain([
+      "-no-banner",
+      "-no-wrap",
+      "-no-ansi-color",
+      "-batch",
+      INPUT_PATH,
+    ]);
   } catch (err) {
     // Emscripten throws ExitStatus when main() calls exit(); anything else
     // is a real failure.
@@ -93,6 +99,6 @@ export async function runMaude(
 function ensureQuit(input: string): string {
   const trimmed = input.trimEnd();
   return trimmed.endsWith("quit .") || trimmed.endsWith("quit")
-    ? trimmed + "\n"
-    : trimmed + "\nquit .\n";
+    ? `${trimmed}\n`
+    : `${trimmed}\nquit .\n`;
 }

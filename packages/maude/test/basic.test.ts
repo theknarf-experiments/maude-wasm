@@ -31,17 +31,20 @@ describe("runMaude", () => {
   });
 
   it("loads extra files from the virtual filesystem", async () => {
-    const result = await runMaude('load "/extra.maude"\nreduce in EXTRA : answer .', {
-      files: {
-        "/extra.maude": `
+    const result = await runMaude(
+      'load "/extra.maude"\nreduce in EXTRA : answer .',
+      {
+        files: {
+          "/extra.maude": `
           fmod EXTRA is
             protecting NAT .
             op answer : -> Nat .
             eq answer = 42 .
           endfm
         `,
+        },
       },
-    });
+    );
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("result NzNat: 42");
   });

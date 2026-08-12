@@ -31,9 +31,7 @@ async function channel(): Promise<{
           handler(e.data as InitMessage)),
     };
   }
-  const { parentPort } = await import(
-    /* @vite-ignore */ "node:worker_threads"
-  );
+  const { parentPort } = await import(/* @vite-ignore */ "node:worker_threads");
   if (!parentPort) throw new Error("no parentPort");
   return {
     post: (msg) => parentPort.postMessage(msg),
@@ -48,6 +46,7 @@ onMessage((msg) => {
 });
 
 async function start(init: InitMessage): Promise<void> {
+  const wasmUrl = init.wasmUrl;
   // Layout: ctrl[0] = state (0 empty, 1 data ready), ctrl[1] = length,
   // followed by the utf-8 payload bytes.
   const ctrl = new Int32Array(init.sab, 0, 2);
@@ -81,8 +80,8 @@ async function start(init: InitMessage): Promise<void> {
       noInitialRun: true,
       print: (line: string) => post({ type: "line", stream: "out", line }),
       printErr: (line: string) => post({ type: "line", stream: "err", line }),
-      locateFile: init.wasmUrl
-        ? (file: string) => (file.endsWith(".wasm") ? init.wasmUrl! : file)
+      locateFile: wasmUrl
+        ? (file: string) => (file.endsWith(".wasm") ? wasmUrl : file)
         : undefined,
       preRun: [
         (mod: { ENV: Record<string, string> }) => {

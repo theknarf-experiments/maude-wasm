@@ -46,7 +46,7 @@ export function useMaude() {
   }, []);
 
   const call = useCallback(
-    <T,>(request: WorkerCall): Promise<T> => {
+    <T>(request: WorkerCall): Promise<T> => {
       const id = nextIdRef.current++;
       setRunning(true);
       return new Promise<T>((resolve, reject) => {

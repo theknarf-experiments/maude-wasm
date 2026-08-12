@@ -171,13 +171,13 @@ p.chapter-count,
   padding-top: 1rem;
 }
 
-.pager a {
+nav.pager a {
   color: var(--accent);
   text-decoration: none;
   font-weight: 600;
 }
 
-.pager a:hover {
+nav.pager a:hover {
   text-decoration: underline;
 }
 
@@ -230,11 +230,12 @@ p.chapter-count,
   cursor: wait;
 }
 
-button.cancel {
-  background: transparent !important;
-  border-color: var(--border) !important;
-  color: inherit !important;
-  font-weight: 400 !important;
+.snippet-bar button.cancel,
+.toolbar button.cancel {
+  background: transparent;
+  border-color: var(--border);
+  color: inherit;
+  font-weight: 400;
 }
 
 .snippet-output {

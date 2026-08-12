@@ -1,10 +1,10 @@
 import {
+  type ExecResult,
   MaudeCommands,
   SENTINEL_COMMAND,
   SENTINEL_OUTPUT,
-  type ExecResult,
 } from "./commands.js";
-import { runMaude, type MaudeOptions } from "./run.js";
+import { type MaudeOptions, runMaude } from "./run.js";
 
 export * from "./commands.js";
 

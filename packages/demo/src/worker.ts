@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
-import { Maude, runMaude, type MaudeOptions } from "maude-wasm";
+
 import wasmUrl from "@maude-wasm/core/maude.wasm?url";
+import { Maude, type MaudeOptions, runMaude } from "maude-wasm";
 import type { Op, WorkerRequest, WorkerResponse } from "./protocol";
 
 const options: MaudeOptions = {

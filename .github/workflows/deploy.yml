@@ -1,0 +1,59 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: sudo apt-get update && sudo apt-get install -y flex
+
+      # The wasm build (GMP + BuDDy + host autotools + Maude) takes ~15
+      # minutes cold; cache everything keyed on the build scripts, so it
+      # only reruns when versions or flags change.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            packages/core/dist
+            packages/core/third_party
+            packages/core/build/prefix
+            packages/core/build/hosttools
+          key: maude-wasm-${{ runner.os }}-${{ hashFiles('packages/core/scripts/*') }}
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          BASE_PATH: /maude-wasm/
+          VITE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      - run: pnpm test
+
+      # GitHub Pages has no SPA rewrites; serve index.html for unknown
+      # paths so deep links to chapters work.
+      - run: cp packages/demo/dist/index.html packages/demo/dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/demo/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

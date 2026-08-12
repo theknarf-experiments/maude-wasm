@@ -1,8 +1,8 @@
 import {
+  type ExecResult,
   MaudeCommands,
   SENTINEL_COMMAND,
   SENTINEL_OUTPUT,
-  type ExecResult,
 } from "./commands.js";
 
 export interface WorkerSessionOptions {
@@ -15,7 +15,7 @@ export interface WorkerSessionOptions {
 
 interface WorkerLike {
   postMessage(msg: unknown): void;
-  terminate(): void | Promise<unknown>;
+  terminate(): void;
 }
 
 type WorkerMessage =
@@ -83,7 +83,7 @@ export class MaudeWorkerSession extends MaudeCommands {
       w.unref();
       worker = {
         postMessage: (msg) => w.postMessage(msg),
-        terminate: () => w.terminate(),
+        terminate: () => void w.terminate(),
       };
       onMessage = (handler) => w.on("message", handler);
       onError = (handler) => w.on("error", handler);
@@ -122,7 +122,7 @@ export class MaudeWorkerSession extends MaudeCommands {
   /** Terminate the interpreter. The session is unusable afterwards. */
   close(): void {
     this.exited = true;
-    void this.worker.terminate();
+    this.worker.terminate();
   }
 
   private async execNow(command: string): Promise<ExecResult> {
@@ -141,7 +141,8 @@ export class MaudeWorkerSession extends MaudeCommands {
           // the next printed line.
           const line = msg.line.replace(/^(Maude> )+/, "");
           if (line.trim() === SENTINEL_OUTPUT) resolve();
-          else if (line.trim() === SENTINEL_COMMAND) return; // echo of the sentinel
+          else if (line.trim() === SENTINEL_COMMAND)
+            return; // echo of the sentinel
           else stdout.push(line);
         } else if (msg.type === "exit") {
           reject(new Error(`Maude exited with code ${msg.code}`));
