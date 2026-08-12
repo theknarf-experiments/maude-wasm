@@ -90,44 +90,11 @@ export async function runMaude(
   };
 }
 
-/**
- * A convenience session that accumulates input across `run()` calls, so
- * modules defined earlier stay in scope for later commands. Each call
- * replays the full history in a fresh interpreter and returns only the
- * output produced by the newest input.
- *
- * @deprecated Use `Maude` (structured, replay-based) or
- * `MaudeWorkerSession` (persistent interpreter) instead.
- */
-export class MaudeSession {
-  private history = "";
-
-  constructor(private readonly options: MaudeOptions = {}) {}
-
-  async run(input: string): Promise<MaudeResult> {
-    const before = await runMaude(this.history || "", this.options);
-    const combined = this.history + input + "\n";
-    const after = await runMaude(combined, this.options);
-    if (after.exitCode === 0) {
-      this.history = combined;
-    }
-    return {
-      stdout: stripPrefix(after.stdout, before.stdout),
-      stderr: stripPrefix(after.stderr, before.stderr),
-      exitCode: after.exitCode,
-    };
-  }
-}
-
 function ensureQuit(input: string): string {
   const trimmed = input.trimEnd();
   return trimmed.endsWith("quit .") || trimmed.endsWith("quit")
     ? trimmed + "\n"
     : trimmed + "\nquit .\n";
-}
-
-function stripPrefix(full: string, prefix: string): string {
-  return full.startsWith(prefix) ? full.slice(prefix.length).replace(/^\n/, "") : full;
 }
 
 interface EmscriptenModule {

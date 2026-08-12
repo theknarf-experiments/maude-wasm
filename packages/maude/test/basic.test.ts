@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MaudeSession, runMaude } from "../src/index.js";
+import { runMaude } from "../src/index.js";
 
 describe("runMaude", () => {
   it("reduces arithmetic in NAT", async () => {
@@ -50,15 +50,5 @@ describe("runMaude", () => {
     await runMaude("fmod LEAK is sort S . endfm");
     const result = await runMaude("reduce in LEAK : 1 .");
     expect(result.stderr).toContain("LEAK");
-  });
-});
-
-describe("MaudeSession", () => {
-  it("keeps modules in scope across runs", async () => {
-    const session = new MaudeSession();
-    await session.run("fmod COUNTER is protecting NAT . op start : -> Nat . eq start = 7 . endfm");
-    const result = await session.run("reduce in COUNTER : start + 1 .");
-    expect(result.stdout).toContain("result NzNat: 8");
-    expect(result.stdout).not.toContain("result NzNat: 7\n");
   });
 });

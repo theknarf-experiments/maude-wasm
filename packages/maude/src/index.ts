@@ -1,6 +1,5 @@
 export {
   runMaude,
-  MaudeSession,
   type MaudeResult,
   type MaudeOptions,
 } from "./run.js";
