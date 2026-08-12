@@ -1,4 +1,3 @@
-import type { MaudeResult } from "maude-wasm";
 
 export type Op =
   | { method: "reduce" | "parse"; term: string; module?: string }
@@ -27,4 +26,3 @@ export type WorkerResponse =
   | { id: number; result: unknown }
   | { id: number; error: string };
 
-export type RawResult = MaudeResult;

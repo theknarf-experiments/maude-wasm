@@ -342,12 +342,6 @@ button.cancel {
   }
 }
 
-.api-listing {
-  border-radius: 0.375rem 0.375rem 0 0;
-  border-bottom: none;
-  margin-bottom: 0;
-}
-
 .listing-editor {
   margin: 1.1rem 0;
 }

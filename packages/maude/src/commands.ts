@@ -162,7 +162,7 @@ export class MaudeCommandError extends Error {
 // with Maude's "====" banner, so instead we emit a sentinel `parse`
 // command around the target command and use its (deterministic,
 // single-line) output as a marker.
-export const SENTINEL = 424243;
+const SENTINEL = 424243;
 export const SENTINEL_COMMAND = `parse in NAT : ${SENTINEL} .`;
 export const SENTINEL_OUTPUT = `NzNat: ${SENTINEL}`;
 
