@@ -42,6 +42,13 @@ build_host_tool() {
   fi
 }
 
+# Touch shipped autotools outputs so make never tries to regenerate them
+# with our (much newer) host automake, which rejects old configure.ac's.
+freshen_autotools() {
+  find "$1" -name configure -o -name aclocal.m4 -o -name 'Makefile.in' \
+    -o -name 'config.h.in' | xargs touch
+}
+
 build_host_tool bison    "$BISON_DIR"    bison
 build_host_tool m4       "$M4_DIR"       m4
 build_host_tool autoconf "$AUTOCONF_DIR" autoconf
@@ -51,7 +58,8 @@ build_host_tool automake "$AUTOMAKE_DIR" automake
 # Generic C limbs (no assembly) build; Maude needs the C++ bindings (gmpxx).
 if [ ! -f "$PREFIX/lib/libgmp.a" ]; then
   echo "=== building GMP $GMP_VERSION ==="
-  rm -rf build/gmp && cp -R "third_party/$GMP_DIR" build/gmp
+  rm -rf build/gmp && cp -Rp "third_party/$GMP_DIR" build/gmp
+  freshen_autotools build/gmp
   (
     cd build/gmp
     emconfigure ./configure \
@@ -71,7 +79,8 @@ fi
 # triple; emconfigure overrides the actual compilers anyway.
 if [ ! -f "$PREFIX/lib/libbdd.a" ]; then
   echo "=== building BuDDy $BUDDY_VERSION ==="
-  rm -rf build/buddy && cp -R "third_party/$BUDDY_DIR" build/buddy
+  rm -rf build/buddy && cp -Rp "third_party/$BUDDY_DIR" build/buddy
+  freshen_autotools build/buddy
   (
     cd build/buddy
     emconfigure ./configure \
