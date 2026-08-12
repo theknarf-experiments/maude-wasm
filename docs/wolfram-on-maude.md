@@ -207,8 +207,10 @@ conformance table in `test/wl.test.ts` covers each item below.
 - [ ] **3.1 `Module`** (lexical, renaming with fresh symbols — capture
       avoidance machinery at the metalevel), **`Block`** (dynamic),
       **`With`** (substitution).
-- [ ] **3.2 `Function`** (`&`, named-parameter, and `Function[{x}, ...]`
-      forms), slot semantics `#`, `##`.
+- [~] **3.2 `Function`.** *Done:* `Function[{vars}, body][args]`
+      (binding via the substitution machinery) and `Function[body]` with
+      `Slot[n]` (slots do not reach into nested Function bodies, per
+      WL). *Pending:* `##` slot sequences, `Function` attributes.
 - [ ] **3.3 Control flow**: `CompoundExpression`, `While`, `Do`, `For`,
       `Switch`, `Which`, `Return`, `Break`, `Continue`.
 - [ ] **3.4 `Throw`/`Catch`** with tags — likely the strategy language
@@ -241,11 +243,12 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 ## Phase 5 — Standard library (written in WL/M itself where possible)
 
-- [ ] **5.1 Structural**: `Map`, `Apply`, `MapThread`, `Thread`,
+- [~] **5.1 Structural.** *Done:* `Map`, `Apply`, `Range`, `First`,
+      `Rest`, `Total`. *Pending:* `MapThread`, `Thread`,
       `Fold`/`FoldList`, `Nest`/`NestList`/`NestWhile`, `FixedPoint`,
       `Select`, `Sort` (with ordering functions), `GroupBy`, `Flatten`
-      (with levels), `Partition`, `Transpose`, `Range`, `Table`,
-      `Total`, `Join`, `Riffle`, `Tuples`.
+      (with levels), `Partition`, `Transpose`, `Table`, `Join`,
+      `Riffle`, `Tuples`.
 - [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).
 - [ ] **5.3 Symbolic basics**: `Expand`, `Together` (polynomial-level),
       `D` (differentiation is a small rule set), `Collect`,

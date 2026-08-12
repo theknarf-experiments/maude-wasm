@@ -218,7 +218,7 @@ fmod WL-EVAL is
 
   var S S0 S1 S2 : St . var Ds Ds0 : Defs . var Dd : Def .
   var N : Nat . var I J : Int .
-  var E E1 H L Rh Cnd V V2 HV Last : Expr .
+  var E E1 E2 H L Rh Cnd V V2 HV Last : Expr .
   var A A1 AV Rest : ArgList .
   var Q F AT : Qid . var B : Bnds . var Sb : Substitution .
   var P UM T : Term . var Str : String . var At : Attrs .
@@ -248,7 +248,7 @@ fmod WL-EVAL is
    && at('SetAttributes, 'HoldFirst) && at('ClearAttributes, 'HoldFirst)
    && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold)
    && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest)
-   && at('RuleDelayed, 'HoldRest) .
+   && at('RuleDelayed, 'HoldRest) && at('Function, 'HoldAll) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -642,6 +642,46 @@ fmod WL-EVAL is
     = if matchesQ(E, L) then E :: casesA(A, L) else casesA(A, L) fi .
   eq builtin(S, ap(s('Cases), ap(H, A) :: E1)) = r(S, ap(s('List), casesA(A, E1))) .
   eq builtin(S, ap(s('Count), ap(H, A) :: E1)) = r(S, lenA(casesA(A, E1))) .
+
+  *** Function application: Function[body][args] with Slot[n], and
+  *** Function[{vars}, body][args]. Slots do not reach into nested
+  *** Function bodies.
+  op nthA : ArgList Nat ~> Expr .
+  eq nthA(E :: A, 1) = E .
+  ceq nthA(E :: A, s N) = nthA(A, N) if N > 0 .
+  op slotE : Expr ArgList -> Expr .
+  op slotA : ArgList ArgList -> ArgList .
+  ceq slotE(ap(s('Slot), I), A) = E2 if E2 := nthA(A, I) .
+  eq slotE(ap(s('Function), A1), A) = ap(s('Function), A1) .
+  eq slotE(ap(H, A1), A) = ap(slotE(H, A), slotA(A1, A)) [owise] .
+  eq slotE(E, A) = E [owise] .
+  eq slotA(nilA, A) = nilA .
+  eq slotA(E :: A1, A) = slotE(E, A) :: slotA(A1, A) .
+  op varsB : ArgList ArgList -> Bnds .
+  eq varsB(nilA, A) = noBnds .
+  eq varsB(s(Q) :: A1, E :: A) = bnd(Q, E) & varsB(A1, A) .
+  eq builtin(S, ap(ap(s('Function), ap(s('List), A1) :: E), A))
+    = ev(S, sbE(E, varsB(A1, A))) .
+  ceq builtin(S, ap(ap(s('Function), E), A)) = ev(S, slotE(E, A))
+    if not isListFn(E) .
+  op isListFn : ArgList -> Bool .
+  eq isListFn(ap(s('List), A) :: E) = true .
+  eq isListFn(A) = false [owise] .
+
+  *** structural builtins
+  op mapF : Expr ArgList -> ArgList .
+  eq mapF(H, nilA) = nilA .
+  eq mapF(H, E :: A) = ap(H, E) :: mapF(H, A) .
+  eq builtin(S, ap(s('Map), H :: ap(E, A))) = ev(S, ap(E, mapF(H, A))) .
+  eq builtin(S, ap(s('Apply), H :: ap(E, A))) = ev(S, ap(H, A)) .
+  op mkRange : Int Int -> ArgList .
+  ceq mkRange(I, J) = I :: mkRange(I + 1, J) if I <= J .
+  eq mkRange(I, J) = nilA [owise] .
+  eq builtin(S, ap(s('Range), I)) = r(S, ap(s('List), mkRange(1, I))) .
+  eq builtin(S, ap(s('Range), I :: J)) = r(S, ap(s('List), mkRange(I, J))) .
+  eq builtin(S, ap(s('First), ap(H, E :: A))) = r(S, E) .
+  eq builtin(S, ap(s('Rest), ap(H, E :: A))) = r(S, ap(H, A)) .
+  eq builtin(S, ap(s('Total), ap(H, A))) = ev(S, ap(s('Plus), A)) .
 
   *** anything else is inert
   eq builtin(S, E) = r(S, E) [owise] .

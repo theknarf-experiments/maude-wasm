@@ -253,6 +253,30 @@ const cases: Array<[string, string, string]> = [
        ap(s('k), 2 :: 1) :: ap(s('k), 1 :: 3))`,
     'ap(s(\'List), str("nonzero") :: str("zero") :: 5 :: str("ok") :: ap(s(\'k), 1 :: 3))',
   ],
+  // -- phase 3/5: functions and structural builtins --------------------
+  [
+    "Function with named parameters and with slots",
+    `ap(s('List),
+       ap(ap(s('Function), ap(s('List), s('x)) :: ap(s('Plus), s('x) :: 1)), 41) ::
+       ap(ap(s('Function), ap(s('Times), ap(s('Slot), 1) :: 2)), 21))`,
+    "ap(s('List), 42 :: 42)",
+  ],
+  [
+    "Map with a slot function over Range",
+    `ap(s('Map),
+       ap(s('Function), ap(s('List), s('n)) :: ap(s('Power), s('n) :: 2)) ::
+       ap(s('Range), 4))`,
+    "ap(s('List), 1 :: 4 :: 9 :: 16)",
+  ],
+  [
+    "Apply / First / Rest / Total",
+    `ap(s('List),
+       ap(s('Apply), s('Plus) :: ap(s('List), 1 :: 2 :: 3)) ::
+       ap(s('First), ap(s('List), 7 :: 8 :: 9)) ::
+       ap(s('Rest), ap(s('List), 7 :: 8 :: 9)) ::
+       ap(s('Total), ap(s('List), 1 :: 2 :: 3 :: 4)))`,
+    "ap(s('List), 6 :: 7 :: ap(s('List), 8 :: 9) :: 10)",
+  ],
 ];
 
 describe("WL/M conformance", () => {
