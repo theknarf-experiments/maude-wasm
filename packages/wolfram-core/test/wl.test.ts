@@ -151,6 +151,37 @@ const cases: Array<[string, string, string]> = [
      ap(s('g), s('a))`,
     "ap(s('List), s('a) :: s('a))",
   ],
+  [
+    "rhs conditions select among equal-specificity definitions",
+    `ap(s('SetDelayed), ap(s('abs), ? 'x) ::
+       ap(s('Condition), ap(s('Times), -1 :: s('x)) :: ap(s('Less), s('x) :: 0))) ::
+     ap(s('SetDelayed), ap(s('abs), ? 'x) ::
+       ap(s('Condition), s('x) :: ap(s('GreaterEqual), s('x) :: 0))) ::
+     ap(s('List), ap(s('abs), -5) :: ap(s('abs), 3) :: ap(s('abs), 0))`,
+    "ap(s('List), 5 :: 3 :: 0)",
+  ],
+  [
+    "lhs Condition is hoisted and kept in definition identity",
+    `ap(s('SetDelayed),
+       ap(s('big), ap(s('Condition), ? 'x :: ap(s('Greater), s('x) :: 10))) ::
+       str("big")) ::
+     ap(s('SetDelayed), ap(s('big), ? 'x) :: str("small")) ::
+     ap(s('List), ap(s('big), 42) :: ap(s('big), 5))`,
+    'ap(s(\'List), str("big") :: str("small"))',
+  ],
+  [
+    "PatternTest with fall-through",
+    `ap(s('SetDelayed), ap(s('par), ap(s('PatternTest), ? 'x :: s('EvenQ))) :: str("even")) ::
+     ap(s('SetDelayed), ap(s('par), ? 'x) :: str("odd")) ::
+     ap(s('List), ap(s('par), 4) :: ap(s('par), 7))`,
+    'ap(s(\'List), str("even") :: str("odd"))',
+  ],
+  [
+    "failing condition on symbolic argument leaves expression inert",
+    `ap(s('SetDelayed), ap(s('p), ap(s('PatternTest), ? 'x :: s('EvenQ))) :: str("even")) ::
+     ap(s('p), s('y))`,
+    "ap(s('p), s('y))",
+  ],
 ];
 
 describe("WL/M conformance", () => {

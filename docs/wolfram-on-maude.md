@@ -165,9 +165,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       rebuilt as the whole expression); specificity scoring makes typed
       blanks dispatch before plain blanks automatically. *Pending:*
       sequence-typed `x__h`/`x___h`. Original task: `x_h`, `x__h`, `x___h`.
-- [ ] **2.2 Conditions** `patt /; cond` and `PatternTest` (`x_?f`) —
-      requires calling back into `eval` during matching (matcher and
-      evaluator become mutually recursive; design the state threading).
+- [x] **2.2 Conditions** `patt /; cond` and `PatternTest` (`x_?f`).
+      Implemented WL-style: conditions live in the rhs as
+      `Condition[rhs, cond]` (lhs-side `/;` and `_?test` are hoisted at
+      definition time); `tryDefs` evaluates the condition with the
+      matched bindings and falls through to later definitions unless it
+      yields True. Definition identity is (pattern, condition), so
+      equal-pattern conditional definitions coexist. PatternTest is
+      supported on blanks/typed blanks; arbitrary subpattern tests
+      pending. Also added: And/Or/Not, EvenQ/OddQ/IntegerQ.
 - [ ] **2.3 `Alternatives`, `Except`, `Repeated`, `PatternSequence`,
       `Optional` (with `Default` values), `Longest`/`Shortest`.**
       Decide per-construct: translate to Maude meta-patterns where

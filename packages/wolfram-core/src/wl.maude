@@ -245,13 +245,19 @@ fmod WL-EVAL is
    && at('If, 'HoldRest) && at('Set, 'HoldFirst)
    && at('SetDelayed, 'HoldAll) && at('CompoundExpression, 'HoldAll)
    && at('SetAttributes, 'HoldFirst) && at('ClearAttributes, 'HoldFirst)
-   && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold) .
+   && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold)
+   && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest) .
 
   *** ---------------------------------------------------- definitions
-  op delDef : Defs Term -> Defs .
-  eq delDef(noD, P) = noD .
-  eq delDef(d(P, Rh) | Ds, P) = delDef(Ds, P) .
-  eq delDef(Dd | Ds, P) = Dd | delDef(Ds, P) [owise] .
+  *** definition identity is (pattern, condition): conditional
+  *** definitions with the same cleaned pattern are distinct
+  op condOf : Expr -> ArgList .
+  eq condOf(ap(s('Condition), Rh :: Cnd)) = Cnd .
+  eq condOf(E) = nilA [owise] .
+  op delDef : Defs Term ArgList -> Defs .
+  eq delDef(noD, P, A) = noD .
+  ceq delDef(d(P, Rh) | Ds, P, A) = delDef(Ds, P, A) if condOf(Rh) == A .
+  eq delDef(Dd | Ds, P, A) = Dd | delDef(Ds, P, A) [owise] .
 
   *** insert keeping specificity descending; equal scores go after
   *** existing entries (definition order)
@@ -262,9 +268,43 @@ fmod WL-EVAL is
       then d(T, E) | d(P, Rh) | Ds
       else d(P, Rh) | insDef(Ds, d(T, E)) fi .
 
+  *** hoist lhs-side Condition / PatternTest into an rhs Condition:
+  *** f[x_ /; c] := r  and  f[x_?t] := r  both become pattern f[x_]
+  *** with rhs Condition[r, ...]
+  sort HP .
+  op hp : ArgList ArgList -> HP [ctor] .    *** cleaned pattern, conditions
+  op hoistE : Expr -> HP .
+  op hoistA : ArgList -> HP .
+  eq hoistA(nilA) = hp(nilA, nilA) .
+  ceq hoistA(E :: A) = hp(E1 :: A1, Cs1 :: Cs2)
+    if hp(E1, Cs1) := hoistE(E) /\ hp(A1, Cs2) := hoistA(A) .
+  ceq hoistE(ap(s('Condition), E :: Cnd)) = hp(E1, Cs1 :: Cnd)
+    if hp(E1, Cs1) := hoistE(E) .
+  eq hoistE(ap(s('PatternTest), (? Q) :: E)) = hp(? Q, ap(E, s(Q))) .
+  eq hoistE(ap(s('PatternTest), ?h(Q, F) :: E)) = hp(?h(Q, F), ap(E, s(Q))) .
+  ceq hoistE(ap(H, A)) = hp(ap(H, A1), Cs1)
+    if not isPatOp(H) /\ hp(A1, Cs1) := hoistA(A) .
+  eq hoistE(E) = hp(E, nilA) [owise] .
+  op isPatOp : Expr -> Bool .
+  eq isPatOp(s('Condition)) = true .
+  eq isPatOp(s('PatternTest)) = true .
+  eq isPatOp(E) = false [owise] .
+
+  op mkAnd : ArgList -> Expr .
+  eq mkAnd(E) = E .
+  ceq mkAnd(E :: A) = ap(s('And), E :: A) if lenA(A) >= 1 .
+
+  op wrapCond : Expr ArgList -> Expr .
+  eq wrapCond(Rh, nilA) = Rh .
+  ceq wrapCond(ap(s('Condition), Rh :: Cnd), A) =
+      ap(s('Condition), Rh :: mkAnd(Cnd :: A)) if lenA(A) >= 1 .
+  eq wrapCond(Rh, A) = ap(s('Condition), Rh :: mkAnd(A)) [owise] .
+
   op addDef : St Expr Expr -> St .
-  ceq addDef(st(Ds, At, N), L, Rh) = st(insDef(delDef(Ds, P), d(P, Rh)), At, N)
-    if P := compileP(L) .
+  ceq addDef(st(Ds, At, N), L, Rh)
+    = st(insDef(delDef(Ds, P, condOf(wrapCond(Rh, Cs))), d(P, wrapCond(Rh, Cs))), At, N)
+    if hp(L2, Cs) := hoistE(L) /\ P := compileP(L2) .
+  var L2 : Expr . var Cs Cs1 Cs2 : ArgList .
 
   *** ---------------------------------------------------- evaluator
   op ev : St Expr -> R .
@@ -381,10 +421,22 @@ fmod WL-EVAL is
   ceq apply(st(Ds, At, N), E) = tryDefs(st(Ds, At, N), subj(E), Ds, E) if N > 0 .
 
   *** first (most specific) definition whose pattern matches wins; a
-  *** successful application consumes fuel and re-evaluates
+  *** conditional rhs evaluates its condition first and falls through to
+  *** later definitions unless it yields True; a successful application
+  *** consumes fuel and re-evaluates
+  ceq tryDefs(st(Ds0, At, s N), UM, d(P, ap(s('Condition), Rh :: Cnd)) | Ds, E)
+    = condBr(S1, V, sbE(Rh, s2b(Sb)), UM, Ds, E)
+    if Sb := metaMatch(MOD, P, UM, nil, 0) /\
+       r(S1, V) := ev(st(Ds0, At, N), sbE(Cnd, s2b(Sb))) .
+  op condBr : St Expr Expr Term Defs Expr -> R .
+  eq condBr(S, s('True), Rh, UM, Ds, E) = ev(S, Rh) .
+  eq condBr(S, V, Rh, UM, Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
   ceq tryDefs(st(Ds0, At, s N), UM, d(P, Rh) | Ds, E)
     = ev(st(Ds0, At, N), sbE(Rh, s2b(Sb)))
-    if Sb := metaMatch(MOD, P, UM, nil, 0) .
+    if not isCondRhs(Rh) /\ Sb := metaMatch(MOD, P, UM, nil, 0) .
+  op isCondRhs : Expr -> Bool .
+  eq isCondRhs(ap(s('Condition), A)) = true .
+  eq isCondRhs(E) = false [owise] .
   eq tryDefs(S, UM, Dd | Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
   eq tryDefs(S, UM, noD, E) = builtin(S, E) .
 
@@ -427,6 +479,22 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('Length), s(Q))) = r(S, 0) .
 
   eq builtin(S, ap(s('Evaluate), E)) = r(S, E) .
+
+  *** logic + integer predicates (used heavily by conditions)
+  eq builtin(S, ap(s('And), nilA)) = r(S, s('True)) .
+  ceq builtin(S, ap(s('And), s('False) :: A)) = r(S, s('False)) if true .
+  eq builtin(S, ap(s('And), s('True) :: A)) = builtin(S, ap(s('And), A)) .
+  eq builtin(S, ap(s('And), E)) = r(S, E) .
+  eq builtin(S, ap(s('Or), nilA)) = r(S, s('False)) .
+  ceq builtin(S, ap(s('Or), s('True) :: A)) = r(S, s('True)) if true .
+  eq builtin(S, ap(s('Or), s('False) :: A)) = builtin(S, ap(s('Or), A)) .
+  eq builtin(S, ap(s('Or), E)) = r(S, E) .
+  eq builtin(S, ap(s('Not), s('True))) = r(S, s('False)) .
+  eq builtin(S, ap(s('Not), s('False))) = r(S, s('True)) .
+  eq builtin(S, ap(s('EvenQ), I)) = r(S, bool2wl(I rem 2 == 0)) .
+  eq builtin(S, ap(s('OddQ), I)) = r(S, bool2wl(I rem 2 =/= 0)) .
+  eq builtin(S, ap(s('IntegerQ), I)) = r(S, s('True)) .
+  ceq builtin(S, ap(s('IntegerQ), E)) = r(S, s('False)) if not (E :: Int) .
 
   *** attribute builtins
   eq builtin(st(Ds, At, N), ap(s('Attributes), s(F)))
