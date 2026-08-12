@@ -31,47 +31,81 @@ Phases 3–6 ≈ a person-year to "genuinely usable".
 
 ---
 
-## Phase 0 — Proof of concept (de-risk the core loop)
+## Phase 0 — Proof of concept (de-risk the core loop) — **DONE**
+
+Implemented in `packages/wolfram-core/src/wl.maude` with 9 TypeScript
+end-to-end tests (`packages/wolfram-core/test/wl.test.ts`).
 
 The smallest end-to-end slice: `f[x_] := x + 1; f[2]` evaluates to `3`
 through the wasm stack. Everything here is throwaway-allowed.
 
-- [ ] **0.1 Expression representation.** One Maude module `WL-SYNTAX`:
+- [x] **0.1 Expression representation.** One Maude module `WL-SYNTAX`:
       sort `Expr`; atoms (integers via `INT`, symbols via `Qid`, strings
       via `STRING`); application `_[_]` of an `Expr` head to an argument
       list; `ArgList` as an assoc-with-identity constructor (`,` with
       `noArgs` id). Decide kind story (single sort vs. `[Expr]` for
       errors). Acceptance: `parse` shows `'Plus['x, 1]`-style terms
       round-tripping.
-- [ ] **0.2 Rulebase as data.** Represent the global state as a term:
+- [x] **0.2 Rulebase as data.** Represent the global state as a term:
       `state(defs, attrs)` where `defs` is a list of
       `def(lhs-pattern, rhs, kind)` (kind: own/down/up-value) and
       `attrs` maps symbols to attribute sets. No meta-modules yet —
       patterns interpreted by our own matcher-driver (0.3).
-- [ ] **0.3 Matching via the metalevel.** Translate WL patterns to Maude
+- [x] **0.3 Matching via the metalevel.** Translate WL patterns to Maude
       meta-patterns: `Blank[]` → fresh `Expr` variable, typed blanks →
       sort/head test, `BlankSequence`/`BlankNullSequence` → `ArgList`
       variables (assoc matching gives the sequence semantics).
       Implement `wlMatch(subject, pattern) : MaybeSubst` with
       `metaMatch` against a synthesized meta-module. Acceptance: unit
       tests for `f[x_]`, `f[x_, y__]`, `f[___, 3, ___]`.
-- [ ] **0.4 Evaluator loop.** `eval(state, expr)`: evaluate head, then
+- [x] **0.4 Evaluator loop.** `eval(state, expr)`: evaluate head, then
       args (left-to-right), then try up-values, down-values, built-ins,
       repeat until fixed point with an iteration limit. Plain recursive
       equations; no attributes yet.
-- [ ] **0.5 `Set`/`SetDelayed`/`Clear`.** Definitions extend `defs`;
+- [x] **0.5 `Set`/`SetDelayed`/`Clear`.** Definitions extend `defs`;
       `Set` evaluates the RHS at definition time, `SetDelayed` doesn't.
       Memoization idiom (`f[n_] := f[n] = ...`) must work.
-- [ ] **0.6 Ten builtins.** `Plus`, `Times`, `Power` (integer cases),
+- [x] **0.6 Ten builtins.** `Plus`, `Times`, `Power` (integer cases),
       `List`, `If`, `Equal`, `Less`, `Head`, `Length`, `ReplaceAll`.
       Numeric folding over `INT`/`RAT`.
-- [ ] **0.7 Wire into the wasm stack.** A `wolfram.maude` loadable by the
+- [x] **0.7 Wire into the wasm stack.** A `wolfram.maude` loadable by the
       existing `Maude`/`MaudeWorkerSession` classes; a TS smoke test
       running fibonacci-with-memoization end-to-end. Acceptance:
       `fib[30]` returns in interactive time.
-- [ ] **0.8 Write-up.** Document what leaked (evaluation-order
+- [x] **0.8 Write-up.** Document what leaked (evaluation-order
       surprises, metalevel overhead measurements) before Phase 1
       commits to the architecture.
+
+### Phase 0 write-up (task 0.8)
+
+What leaked, and the decisions it forced:
+
+- **No pretty core syntax.** `_[_]` and `_,_` *are* META-TERM's syntax;
+  declaring them in any module that meets META-LEVEL is an unpatchable
+  clash. Core terms are `ap(s('f), 1 :: 2)`; the human-facing syntax is
+  the Phase 6 parser's job. (Settles part of ADR-1.)
+- **`upTerm` retyping.** In a META-LEVEL-importing module, qid atoms
+  metarepresent as `''q.Sort` (`Sort < Qid` there), which is ill-typed
+  for `metaMatch` against WL-SYNTAX — both patterns and subjects go
+  through a retyping pass (`nm`/`p2m`) first. Cost one debugging hour;
+  now structural.
+- **The matching-condition idiom.** `Sb := metaMatch(...)` with `Sb` of
+  sort `Substitution` fails the condition on `noMatch`, giving
+  "first definition that matches, else fall through" with no explicit
+  case analysis. The whole dispatcher is three equations.
+- **Sequence splicing is free.** Bindings substitute into the
+  associative `_::_` argument list, so `x___` splicing needs no code.
+- **Measurements** (wasm, Apple Silicon): the full test battery —
+  interpreter load, memoized `fib[30]`, naive `fib[15]` (~2000 rule
+  applications, >10k `metaMatch` calls) — runs in ~300 ms. The linear
+  definition scan is nowhere near being the bottleneck at this scale;
+  revisit at 7.3.
+- **State threading (ADR-3):** pure `st(defs, fuel)` threading through
+  `ev` was clean; no need for configuration-style state yet. Fuel gives
+  a crude `$IterationLimit` until 1.7.
+- **Confirmed WL quirk:** `expr /. x_ -> rhs` rewrites the *whole*
+  expression (outermost) — our implementation agrees with real WL here
+  by construction.
 
 ## Phase 1 — Faithful evaluator semantics
 

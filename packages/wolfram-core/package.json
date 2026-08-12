@@ -1,0 +1,20 @@
+{
+  "name": "@maude-wasm/wolfram-core",
+  "version": "0.1.0",
+  "description": "WL/M: a Wolfram-Language core implemented on Maude",
+  "type": "module",
+  "license": "GPL-2.0-or-later",
+  "exports": {
+    "./wl.maude": "./src/wl.maude"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "maude-wasm": "workspace:*",
+    "vitest": "^3.2.4"
+  }
+}

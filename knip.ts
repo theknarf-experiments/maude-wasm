@@ -10,6 +10,10 @@ const config: KnipConfig = {
       entry: [],
       project: [],
     },
+    "packages/wolfram-core": {
+      entry: ["test/*.test.ts"],
+      project: ["test/**"],
+    },
     "packages/maude": {
       // session-worker is spawned via `new Worker(new URL(...))`, not
       // imported statically.
