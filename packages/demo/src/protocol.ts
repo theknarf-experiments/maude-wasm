@@ -30,7 +30,8 @@ export type Op =
 
 export type WorkerRequest =
   | { id: number; kind: "raw"; code: string }
-  | { id: number; kind: "capability"; setup: string; op: Op };
+  | { id: number; kind: "capability"; setup: string; op: Op }
+  | { id: number; kind: "wolfram"; source: string };
 
 export type WorkerResponse =
   | { id: number; result: unknown }

@@ -1,8 +1,8 @@
 import {
   type ExecResult,
   MaudeCommands,
-  SENTINEL_COMMAND,
   SENTINEL_OUTPUT,
+  sentinelCommand,
 } from "./commands.js";
 
 export interface WorkerSessionOptions {
@@ -11,6 +11,13 @@ export interface WorkerSessionOptions {
    * `import wasmUrl from "@maude-wasm/core/maude.wasm?url"`).
    */
   wasmUrl?: string;
+  /**
+   * Module the output-delimiter command runs in (default `NAT`).
+   * Maude clears a module's memo tables when a command runs in a
+   * different module, so sessions that rely on `[memo]` operators
+   * should set this to their working module (which must import NAT).
+   */
+  sentinelModule?: string;
 }
 
 interface WorkerLike {
@@ -51,6 +58,7 @@ export class MaudeWorkerSession extends MaudeCommands {
     private readonly worker: WorkerLike,
     private readonly ctrl: Int32Array,
     private readonly data: Uint8Array,
+    private readonly sentinelCmd: string,
   ) {
     super();
   }
@@ -93,6 +101,7 @@ export class MaudeWorkerSession extends MaudeCommands {
       worker,
       new Int32Array(sab, 0, 2),
       new Uint8Array(sab, 8),
+      sentinelCommand(options.sentinelModule ?? "NAT"),
     );
     const ready = new Promise<void>((resolve, reject) => {
       onMessage((msg) => {
@@ -141,7 +150,7 @@ export class MaudeWorkerSession extends MaudeCommands {
           // the next printed line.
           const line = msg.line.replace(/^(Maude> )+/, "");
           if (line.trim() === SENTINEL_OUTPUT) resolve();
-          else if (line.trim() === SENTINEL_COMMAND)
+          else if (line.trim() === this.sentinelCmd)
             return; // echo of the sentinel
           else stdout.push(line);
         } else if (msg.type === "exit") {
@@ -156,7 +165,7 @@ export class MaudeWorkerSession extends MaudeCommands {
       (this.currentModule ? `select ${this.currentModule} .\n` : "") +
       command +
       "\n" +
-      SENTINEL_COMMAND +
+      this.sentinelCmd +
       "\n";
     await this.write(input);
     try {

@@ -1,0 +1,1835 @@
+*** WL/M: a Wolfram-Language core on Maude. Phases 0-1.
+***
+*** Expressions are terms of sort Expr; the global rulebase and attribute
+*** table are ordinary data threaded through the evaluator; pattern
+*** matching runs on Maude's engine via metaMatch against WL-SYNTAX, with
+*** WL blanks translated to meta-variables (sequence blanks become
+*** ArgList variables, so associative matching provides sequence
+*** semantics).
+***
+*** Deliberate divergences from WL (see docs/wolfram-on-maude.md):
+*** - `?? q` is BlankNullSequence (0+); `?s q` (BlankSequence, 1+) and
+***   typed sequence blanks hoist their constraints into definition
+***   conditions, so inside ReplaceAll rules (which skip hoisting) they
+***   all degrade to 0+ untyped sequences.
+*** - Set/SetDelayed hold their entire lhs (WL evaluates lhs arguments).
+*** - Orderless canonical order is ours (rank, then structural), not WL's.
+*** - Flat/Orderless affect evaluation-time normalization; matching
+***   modulo Flat/Orderless axioms is still pending (1.2b).
+*** - Definition order: specificity = non-variable node count of the
+***   compiled pattern, descending; ties keep definition order.
+
+fmod WL-SYNTAX is
+  protecting RAT .
+  protecting FLOAT .
+  protecting STRING .
+  protecting QID .
+  sorts Expr ArgList .
+  subsort Expr < ArgList .
+  subsort Rat < Expr .
+  op s : Qid -> Expr [ctor] .              *** symbol
+  op str : String -> Expr [ctor] .         *** string atom
+  op fl : Float -> Expr [ctor] .           *** machine real
+  op ap : Expr ArgList -> Expr [ctor] .    *** application h[args]
+  op nilA : -> ArgList [ctor] .
+  op _::_ : ArgList ArgList -> ArgList [ctor assoc id: nilA prec 60] .
+  op ?_ : Qid -> Expr [ctor prec 5] .      *** Blank[q]  (q_)
+  op ??_ : Qid -> Expr [ctor prec 5] .     *** BlankNullSequence[q]  (q___)
+  op ?s_ : Qid -> Expr [ctor prec 5] .     *** BlankSequence[q]  (q__)
+  op ?h : Qid Qid -> Expr [ctor] .         *** Blank[q, head]  (q_head)
+  op ?sh : Qid Qid -> Expr [ctor] .        *** BlankSequence[q, head]  (q__head)
+  op ??h : Qid Qid -> Expr [ctor] .        *** BlankNullSequence[q, head]  (q___head)
+  op unw : Qid Expr -> Expr [ctor] .       *** in-flight Return/Break/Throw
+endfm
+
+fmod WL-BINDINGS is
+  protecting WL-SYNTAX .
+  sorts Bnd Bnds .
+  subsort Bnd < Bnds .
+  op bnd : Qid ArgList -> Bnd [ctor] .
+  op noBnds : -> Bnds [ctor] .
+  op _&_ : Bnds Bnds -> Bnds [ctor assoc comm id: noBnds] .
+
+  var Q : Qid . var A : ArgList . var B : Bnds .
+  var E H E2 : Expr .
+
+  *** partial lookup: unreduced (kind) when unbound - callers sort-test
+  op lookupB : Bnds Qid ~> ArgList .
+  eq lookupB(bnd(Q, A) & B, Q) = A .
+
+  *** substitute bound symbols in a rule rhs; sequence bindings splice
+  *** into argument lists via the associative _::_
+  op sbA : ArgList Bnds -> ArgList .
+  op sbA1 : Expr Bnds -> ArgList .
+  op sbE : Expr Bnds -> Expr .
+  eq sbA(nilA, B) = nilA .
+  eq sbA(E :: A, B) = sbA1(E, B) :: sbA(A, B) .
+  eq sbA1(s(Q), B) = if lookupB(B, Q) :: ArgList then lookupB(B, Q) else s(Q) fi .
+  eq sbA1(ap(H, A), B) = ap(sbE(H, B), sbA(A, B)) .
+  eq sbA1(E, B) = E [owise] .
+  ceq sbE(E, B) = E2 if E2 := sbA1(E, B) .
+  eq sbE(E, B) = ap(s('Sequence), sbA1(E, B)) [owise] .
+endfm
+
+*** total order on expressions for Orderless canonicalization
+fmod WL-ORDER is
+  protecting WL-BINDINGS .
+  protecting CONVERSION .
+  var RA RB : Rat . var Q Q2 Q3 Q4 : Qid . var Str Str2 : String .
+  var E E2 H H2 : Expr . var A A2 : ArgList . var FL FL2 : Float .
+
+  op rank : Expr -> Nat .
+  eq rank(RA) = 0 .
+  eq rank(fl(FL)) = 0 .
+  eq rank(str(Str)) = 1 .
+  eq rank(s(Q)) = 2 .
+  eq rank(? Q) = 3 .
+  eq rank(?h(Q, Q2)) = 3 .
+  eq rank(?? Q) = 4 .
+  eq rank(?s Q) = 4 .
+  eq rank(?sh(Q, Q2)) = 4 .
+  eq rank(??h(Q, Q2)) = 4 .
+  eq rank(ap(H, A)) = 5 .
+  eq rank(unw(Q, E)) = 6 .
+
+  op ltE : Expr Expr -> Bool .
+  op ltA : ArgList ArgList -> Bool .
+  ceq ltE(E, E2) = rank(E) < rank(E2) if rank(E) =/= rank(E2) .
+  eq ltE(RA, RB) = RA < RB .
+  eq ltE(fl(FL), fl(FL2)) = FL < FL2 .
+  eq ltE(RA, fl(FL)) = float(RA) < FL .
+  eq ltE(fl(FL), RA) = FL < float(RA) .
+  eq ltE(str(Str), str(Str2)) = Str < Str2 .
+  eq ltE(s(Q), s(Q2)) = string(Q) < string(Q2) .
+  eq ltE(? Q, ? Q2) = string(Q) < string(Q2) .
+  eq ltE(?h(Q, Q2), ? Q2) = true [owise] .
+  eq ltE(?? Q, ?? Q2) = string(Q) < string(Q2) .
+  eq ltE(?s Q, ?s Q2) = string(Q) < string(Q2) .
+  eq ltE(?sh(Q, Q2), ?sh(Q3, Q4)) = string(Q) < string(Q3) .
+  eq ltE(??h(Q, Q2), ??h(Q3, Q4)) = string(Q) < string(Q3) .
+  ceq ltE(ap(H, A), ap(H2, A2)) = ltE(H, H2) if H =/= H2 .
+  eq ltE(ap(H, A), ap(H, A2)) = ltA(A, A2) .
+  eq ltE(E, E2) = false [owise] .
+  eq ltA(nilA, nilA) = false .
+  eq ltA(nilA, E :: A) = true .
+  eq ltA(E :: A, nilA) = false .
+  ceq ltA(E :: A, E2 :: A2) = ltE(E, E2) if E =/= E2 .
+  eq ltA(E :: A, E :: A2) = ltA(A, A2) .
+
+  *** insertion sort
+  op sortA : ArgList -> ArgList .
+  op insA : Expr ArgList -> ArgList .
+  eq sortA(nilA) = nilA .
+  eq sortA(E :: A) = insA(E, sortA(A)) .
+  eq insA(E, nilA) = E .
+  eq insA(E, E2 :: A) = if ltE(E2, E) then E2 :: insA(E, A) else E :: E2 :: A fi .
+endfm
+
+fmod WL-META is
+  protecting WL-ORDER .
+  protecting META-LEVEL .
+
+  op MOD : -> Module [memo] .
+  eq MOD = upModule('WL-SYNTAX, true) .
+
+  var C C2 : Constant . var V : Variable . var F : Qid . var T T2 : Term .
+  var TL : TermList . var NeTL : NeTermList .
+  var Sb : Substitution . var A : ArgList . var S : String .
+
+  *** upTerm here types qid atoms as ''q.Sort (Sort < Qid in the
+  *** metalevel); retype them to ''q.Qid, which is what MOD expects.
+  op reQ : Constant -> Constant .
+  eq reQ(C) = qid(string(getName(C)) + ".Qid") .
+
+  *** meta variable for a blank: 'q -> q:Expr / q:ArgList
+  op blankVar : Constant String -> Qid .
+  eq blankVar(C, S)
+    = qid(substr(string(getName(C)), 1, length(string(getName(C)))) + S) .
+
+  *** normalize a subject's metarepresentation for MOD (retyping only)
+  op nm : Term -> Term .
+  op nmL : TermList -> TermList .
+  eq nm('s[C]) = 's[reQ(C)] .
+  eq nm('?_[C]) = '?_[reQ(C)] .
+  eq nm('??_[C]) = '??_[reQ(C)] .
+  eq nm('?s_[C]) = '?s_[reQ(C)] .
+  eq nm('?h[C, C2]) = '?h[reQ(C), reQ(C2)] .
+  eq nm('?sh[C, C2]) = '?sh[reQ(C), reQ(C2)] .
+  eq nm('??h[C, C2]) = '??h[reQ(C), reQ(C2)] .
+  eq nm(F[NeTL]) = F[nmL(NeTL)] [owise] .
+  eq nm(T) = T [owise] .
+  eq nmL((T, TL)) = nm(T), nmL(TL) .
+  eq nmL(empty) = empty .
+
+  *** compile a pattern: blanks become meta variables
+  op p2m : Term -> Term .
+  op p2mL : TermList -> TermList .
+  eq p2m('?_[C]) = blankVar(C, ":Expr") .
+  eq p2m('??_[C]) = blankVar(C, ":ArgList") .
+  *** sequence-blank constraints (1+, element heads) are hoisted into
+  *** conditions at definition time; here (the un-hoisted ReplaceAll
+  *** path) they degrade to plain 0+ sequences
+  eq p2m('?s_[C]) = blankVar(C, ":ArgList") .
+  eq p2m('?sh[C, C2]) = blankVar(C, ":ArgList") .
+  eq p2m('??h[C, C2]) = blankVar(C, ":ArgList") .
+  *** typed blanks: atoms map to sort-typed variables; a user head f
+  *** maps to ap(s(f), name$ap$f:ArgList), rebuilt into a whole-expr
+  *** binding by mkB below
+  eq p2m('?h[C, C2]) = typedVar(C, qidName(C2)) .
+  op qidName : Constant -> String .
+  eq qidName(C) = substr(string(getName(C)), 1, length(string(getName(C)))) .
+  op typedVar : Constant String -> Term .
+  eq typedVar(C, "Integer") = blankVar(C, ":Int") .
+  eq typedVar(C, "String") = 'str[blankVar(C, ":String")] .
+  eq typedVar(C, "Symbol") = 's[blankVar(C, ":Qid")] .
+  eq typedVar(C, "Real") = 'fl[blankVar(C, ":Float")] .
+  ceq typedVar(C, S) = 'ap['s[qid("'" + S + ".Qid")], blankVar(C, "$ap$" + S + ":ArgList")]
+    if S =/= "Integer" /\ S =/= "String" /\ S =/= "Symbol" /\ S =/= "Real" .
+  eq p2m('s[C]) = 's[reQ(C)] .
+  eq p2m(F[NeTL]) = F[p2mL(NeTL)] [owise] .
+  eq p2m(T) = T [owise] .
+  eq p2mL((T, TL)) = p2m(T), p2mL(TL) .
+  eq p2mL(empty) = empty .
+
+  op subj : ArgList -> Term .
+  eq subj(A) = nm(upTerm(A)) .
+  op compileP : ArgList -> Term .
+  eq compileP(A) = p2m(upTerm(A)) .
+
+  *** specificity: count of non-variable nodes in a compiled pattern
+  op spec : Term -> Nat .
+  op specL : TermList -> Nat .
+  eq spec(V) = 0 .
+  eq spec(F[NeTL]) = 1 + specL(NeTL) [owise] .
+  eq spec(T) = 1 [owise] .
+  eq specL((T, TL)) = spec(T) + specL(TL) .
+  eq specL(empty) = 0 .
+
+  *** metalevel substitution -> bindings
+  op dn : Term ~> ArgList .
+  eq dn(T) = downTerm(T, s('$downTermError)) .
+  op dnStr : Term ~> String .
+  eq dnStr(T) = downTerm(T, "$downTermError") .
+  op dnQ : Term ~> Qid .
+  eq dnQ(T) = downTerm(T, '$downTermError) .
+  op dnF : Term ~> Float .
+  eq dnF(T) = downTerm(T, 1.0e300) .
+  op s2b : Substitution -> Bnds .
+  ceq s2b((V <- T) ; Sb) = mkB(V, T) & s2b(Sb) if true .
+  eq s2b(none) = noBnds .
+  op mkB : Variable Term -> Bnd .
+  ceq mkB(V, T) = bnd(qid(substr(string(getName(V)), 0, N2)),
+                      ap(s(qid(substr(string(getName(V)), N2 + 4,
+                                      length(string(getName(V)))))), A))
+    if N2 := find(string(getName(V)), "$ap$", 0) /\ A := dn(T) .
+  ceq mkB(V, T) = bnd(getName(V), str(dnStr(T))) if getType(V) == 'String .
+  ceq mkB(V, T) = bnd(getName(V), s(dnQ(T))) if getType(V) == 'Qid .
+  ceq mkB(V, T) = bnd(getName(V), fl(dnF(T))) if getType(V) == 'Float .
+  ceq mkB(V, T) = bnd(getName(V), A) if A := dn(T) [owise] .
+  var N2 : Nat . var A2 : ArgList .
+endfm
+
+fmod WL-EVAL is
+  protecting WL-META .
+  protecting CONVERSION .
+
+  *** attribute table: a set of (symbol, attribute) pairs
+  sorts SymAttr Attrs .
+  subsort SymAttr < Attrs .
+  op at : Qid Qid -> SymAttr [ctor] .
+  op noAt : -> Attrs [ctor] .
+  op _&&_ : Attrs Attrs -> Attrs [ctor assoc comm id: noAt] .
+
+  *** rulebase: compiled lhs pattern (meta term) + rhs, ordered by
+  *** specificity (descending), ties in definition order
+  sorts Def Defs St R .
+  op d : Term Expr -> Def [ctor] .
+  op noD : -> Defs [ctor] .
+  op _|_ : Def Defs -> Defs [ctor prec 70 gather (e E)] .
+  op st : Defs Attrs Nat -> St [ctor] .     *** defs, attributes, fuel
+  op r : St ArgList -> R [ctor] .
+
+  var S S0 S1 S2 : St . var Ds Ds0 : Defs . var Dd : Def .
+  var N : Nat . var I J : Int . var RA RB : Rat .
+  var E E1 E2 H L Rh Cnd V V2 HV Last : Expr .
+  var A A1 AV Rest : ArgList .
+  var Q F AT : Qid . var B : Bnds . var Sb : Substitution .
+  var P UM T : Term . var Str : String . var At : Attrs .
+  var FL FL2 : Float .
+
+  *** ---------------------------------------------------- attributes
+  op hasAttr : Attrs Qid Qid -> Bool .
+  eq hasAttr(at(F, AT) && At, F, AT) = true .
+  eq hasAttr(At, F, AT) = false [owise] .
+  op hasAttrE : Attrs Expr Qid -> Bool .
+  eq hasAttrE(At, s(F), AT) = hasAttr(At, F, AT) .
+  eq hasAttrE(At, E, AT) = false [owise] .
+  op delAt : Attrs Qid Qid -> Attrs .
+  eq delAt(at(F, AT) && At, F, AT) = delAt(At, F, AT) .
+  eq delAt(At, F, AT) = At [owise] .
+  op attrsOf : Attrs Qid -> ArgList .
+  eq attrsOf(at(F, AT) && At, F) = insA(s(AT), attrsOf(At, F)) .
+  eq attrsOf(At, F) = nilA [owise] .
+
+  *** WL builtins ship with attributes
+  op defaultAttrs : -> Attrs .
+  eq defaultAttrs
+    = at('Plus, 'Flat) && at('Plus, 'Orderless) && at('Plus, 'OneIdentity)
+   && at('Times, 'Flat) && at('Times, 'Orderless) && at('Times, 'OneIdentity)
+   && at('Hold, 'HoldAll) && at('HoldForm, 'HoldAll)
+   && at('If, 'HoldRest) && at('Set, 'HoldFirst)
+   && at('SetDelayed, 'HoldAll) && at('CompoundExpression, 'HoldAll)
+   && at('SetAttributes, 'HoldFirst) && at('ClearAttributes, 'HoldFirst)
+   && at('Attributes, 'HoldAll) && at('Sequence, 'SequenceHold)
+   && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest)
+   && at('RuleDelayed, 'HoldRest) && at('Function, 'HoldAll)
+   && at('While, 'HoldAll) && at('Do, 'HoldAll) && at('Table, 'HoldAll)
+   && at('TagSetDelayed, 'HoldAll) && at('UpSetDelayed, 'HoldAll)
+   && at('Module, 'HoldAll) && at('With, 'HoldAll) && at('Which, 'HoldAll)
+   && at('Switch, 'HoldRest) && at('For, 'HoldAll)
+   && at('Unset, 'HoldAll) && at('Clear, 'HoldAll)
+   && at('ClearAll, 'HoldAll) && at('Unevaluated, 'HoldAll)
+   && at('Block, 'HoldAll) && at('Catch, 'HoldAll)
+   && at('Plus, 'Listable) && at('Times, 'Listable)
+   && at('Power, 'Listable) && at('Abs, 'Listable)
+   && at('Sin, 'Listable) && at('Cos, 'Listable)
+   && at('Exp, 'Listable) && at('Log, 'Listable)
+   && at('Factorial, 'Listable) && at('Mod, 'Listable)
+   && at('Quotient, 'Listable) && at('GCD, 'Listable)
+   && at('EvenQ, 'Listable) && at('OddQ, 'Listable) .
+
+  *** ---------------------------------------------------- definitions
+  *** definition identity is (pattern, condition): conditional
+  *** definitions with the same cleaned pattern are distinct
+  op condOf : Expr -> ArgList .
+  eq condOf(ap(s('Condition), Rh :: Cnd)) = Cnd .
+  eq condOf(E) = nilA [owise] .
+  op delDef : Defs Term ArgList -> Defs .
+  eq delDef(noD, P, A) = noD .
+  ceq delDef(d(P, Rh) | Ds, P, A) = delDef(Ds, P, A) if condOf(Rh) == A .
+  eq delDef(Dd | Ds, P, A) = Dd | delDef(Ds, P, A) [owise] .
+
+  *** insert keeping specificity descending; equal scores go after
+  *** existing entries (definition order)
+  op insDef : Defs Def -> Defs .
+  eq insDef(noD, Dd) = Dd | noD .
+  eq insDef(d(P, Rh) | Ds, d(T, E))
+    = if spec(T) > spec(P)
+      then d(T, E) | d(P, Rh) | Ds
+      else d(P, Rh) | insDef(Ds, d(T, E)) fi .
+
+  *** hoist lhs-side Condition / PatternTest into an rhs Condition:
+  *** f[x_ /; c] := r  and  f[x_?t] := r  both become pattern f[x_]
+  *** with rhs Condition[r, ...]
+  op isGroundP : Term -> Bool .
+  eq isGroundP(T) = T :: GroundTerm .
+
+  sort HPC .
+  *** cleaned pattern (an ArgList: elements may hoist to none, one, or
+  *** several pattern items), hoisted conditions, definition-time
+  *** bindings, fresh-name counter
+  op hpc : ArgList ArgList Bnds Nat -> HPC [ctor] .
+  op hoistE : Expr Nat -> HPC .
+  op hoistA : ArgList Nat -> HPC .
+  eq hoistA(nilA, N) = hpc(nilA, nilA, noBnds, N) .
+  ceq hoistA(E :: A, N) = hpc(A0 :: A1, Cs1 :: Cs2, B1 & B2, N2)
+    if hpc(A0, Cs1, B1, N1) := hoistE(E, N) /\
+       hpc(A1, Cs2, B2, N2) := hoistA(A, N1) .
+  ceq hoistE(ap(s('Condition), E :: Cnd), N) = hpc(E1, Cs1 :: Cnd, B1, N1)
+    if hpc(E1, Cs1, B1, N1) := hoistE(E, N) .
+  eq hoistE(ap(s('PatternTest), (? Q) :: E), N) = hpc(? Q, ap(E, s(Q)), noBnds, N) .
+  eq hoistE(ap(s('PatternTest), ?h(Q, F) :: E), N) = hpc(?h(Q, F), ap(E, s(Q)), noBnds, N) .
+  *** sequence blanks: match as a plain 0+ sequence variable, with the
+  *** 1+ / element-head constraints hoisted into conditions
+  op seq1C : Qid -> Expr .
+  eq seq1C(Q) = ap(s('GreaterEqual), ap(s('Length), ap(s('List), s(Q))) :: 1) .
+  op allHC : Qid Qid -> Expr .
+  eq allHC(Q, F) = ap(s('$AllHeadQ), ap(s('List), s(Q)) :: s(F)) .
+  op allMC : Qid Expr -> Expr .
+  eq allMC(Q, E) = ap(s('$AllMatchQ), ap(s('List), s(Q)) :: E) .
+  eq hoistE(?s Q, N) = hpc(?? Q, seq1C(Q), noBnds, N) .
+  eq hoistE(?sh(Q, F), N) = hpc(?? Q, seq1C(Q) :: allHC(Q, F), noBnds, N) .
+  eq hoistE(??h(Q, F), N) = hpc(?? Q, allHC(Q, F), noBnds, N) .
+  *** PatternSequence[p...] splices its items into the argument list
+  eq hoistE(ap(s('PatternSequence), A), N) = hoistA(A, N) .
+  *** Repeated[p] / RepeatedNull[p]: a fresh sequence variable with an
+  *** every-element-matches condition (p itself must be condition-free)
+  eq hoistE(ap(s('Repeated), E), N)
+    = hpc(?? qid("$rep" + string(N, 10)),
+          seq1C(qid("$rep" + string(N, 10)))
+            :: allMC(qid("$rep" + string(N, 10)), E),
+          noBnds, N + 1) .
+  eq hoistE(ap(s('RepeatedNull), E), N)
+    = hpc(?? qid("$rep" + string(N, 10)),
+          allMC(qid("$rep" + string(N, 10)), E), noBnds, N + 1) .
+  *** Longest/Shortest strip to their pattern: match preference is
+  *** Maude's enumeration order, not WL's (documented divergence)
+  eq hoistE(ap(s('Longest), E), N) = hoistE(E, N) .
+  eq hoistE(ap(s('Shortest), E), N) = hoistE(E, N) .
+  *** Optional's absent branch (from xAltE): match nothing, pre-bind the
+  *** default into the rhs
+  op absO : Qid Expr -> Expr .
+  eq hoistE(absO(Q, E), N) = hpc(nilA, nilA, bnd(Q, E), N) .
+  *** x : patt -- naming: blanks rename to x; Except gets a condition;
+  *** ground patterns bind at definition time
+  eq hoistE(ap(s('Pattern), s(Q) :: (? Q2)), N) = hpc(? Q, nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: (?? Q2)), N) = hpc(?? Q, nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: (?s Q2)), N) = hpc(?? Q, seq1C(Q), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ?h(Q2, F)), N) = hpc(?h(Q, F), nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ?sh(Q2, F)), N)
+    = hpc(?? Q, seq1C(Q) :: allHC(Q, F), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ??h(Q2, F)), N)
+    = hpc(?? Q, allHC(Q, F), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ap(s('Repeated), E)), N)
+    = hpc(?? Q, seq1C(Q) :: allMC(Q, E), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ap(s('RepeatedNull), E)), N)
+    = hpc(?? Q, allMC(Q, E), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ap(s('Except), E)), N)
+    = hpc(? Q, ap(s('Not), ap(s('MatchQ), s(Q) :: E)), noBnds, N) .
+  ceq hoistE(ap(s('Pattern), s(Q) :: E), N) = hpc(E1, Cs1, bnd(Q, E1) & B1, N1)
+    if hpc(E1, Cs1, B1, N1) := hoistE(E, N) /\ isGroundP(compileP(E1)) .
+  *** unnamed Except[c]: fresh blank + Not[MatchQ[...]] condition
+  eq hoistE(ap(s('Except), E), N)
+    = hpc(? qid("$exc" + string(N, 10)),
+          ap(s('Not), ap(s('MatchQ), s(qid("$exc" + string(N, 10))) :: E)),
+          noBnds, N + 1) .
+  ceq hoistE(ap(H, A), N) = hpc(ap(H, A1), Cs1, B1, N1)
+    if not isPatOp(H) /\ hpc(A1, Cs1, B1, N1) := hoistA(A, N) .
+  eq hoistE(E, N) = hpc(E, nilA, noBnds, N) [owise] .
+  op isPatOp : Expr -> Bool .
+  eq isPatOp(s('Condition)) = true .
+  eq isPatOp(s('PatternTest)) = true .
+  eq isPatOp(s('Pattern)) = true .
+  eq isPatOp(s('Except)) = true .
+  eq isPatOp(s('PatternSequence)) = true .
+  eq isPatOp(s('Repeated)) = true .
+  eq isPatOp(s('RepeatedNull)) = true .
+  eq isPatOp(s('Optional)) = true .
+  eq isPatOp(s('Longest)) = true .
+  eq isPatOp(s('Shortest)) = true .
+  eq isPatOp(E) = false [owise] .
+
+  op mkAnd : ArgList -> Expr .
+  eq mkAnd(E) = E .
+  ceq mkAnd(E :: A) = ap(s('And), E :: A) if lenA(A) >= 1 .
+  op mkCnd : ArgList -> Expr .
+  eq mkCnd(nilA) = s('True) .
+  eq mkCnd(E :: A) = mkAnd(E :: A) .
+
+  op wrapCond : Expr ArgList -> Expr .
+  eq wrapCond(Rh, nilA) = Rh .
+  ceq wrapCond(ap(s('Condition), Rh :: Cnd), A) =
+      ap(s('Condition), Rh :: mkAnd(Cnd :: A)) if lenA(A) >= 1 .
+  eq wrapCond(Rh, A) = ap(s('Condition), Rh :: mkAnd(A)) [owise] .
+
+  *** Alternatives[p1, p2, ...] expands into one definition per branch
+  *** cartesian across occurrences, sharing the rhs
+  sort WA .
+  sort ALs .
+  sort EL .
+  op w : ArgList -> WA [ctor] .
+  op nilAL : -> ALs [ctor] .
+  op _%%_ : WA ALs -> ALs [ctor gather (e E)] .
+  op nilEL : -> EL [ctor] .
+  op _%_ : Expr EL -> EL [ctor gather (e E)] .
+
+  var WAs WAs2 : ALs . var EL1 EL2 : EL . var WA1 : WA .
+
+  op xAltE : Expr -> EL .
+  op xAltAlts : ArgList -> EL .
+  op xAltA : ArgList -> ALs .
+  op catEL : EL EL -> EL .
+  op crossHA : EL ALs -> EL .
+  op crossEA : Expr ALs -> EL .
+  op consAll : Expr ALs -> ALs .
+  op catAL : ALs ALs -> ALs .
+
+  eq xAltE(ap(s('Alternatives), A)) = xAltAlts(A) .
+  *** Optional[x_, d]: two branches - argument supplied, or absent with
+  *** the default pre-bound (absO is consumed by hoistE)
+  eq xAltE(ap(s('Optional), (? Q) :: E)) = (? Q) % (absO(Q, E) % nilEL) .
+  eq xAltE(ap(s('Optional), ?h(Q, F) :: E)) = ?h(Q, F) % (absO(Q, E) % nilEL) .
+  eq xAltE(ap(s('Optional), ap(s('Pattern), s(Q) :: E1) :: E))
+    = ap(s('Pattern), s(Q) :: E1) % (absO(Q, E) % nilEL) .
+  eq xAltE(ap(H, A)) = crossHA(xAltE(H), xAltA(A)) [owise] .
+  eq xAltE(E) = E % nilEL [owise] .
+  eq xAltAlts(nilA) = nilEL .
+  eq xAltAlts(E :: A) = catEL(xAltE(E), xAltAlts(A)) .
+  eq catEL(nilEL, EL2) = EL2 .
+  eq catEL(E % EL1, EL2) = E % catEL(EL1, EL2) .
+  eq crossHA(nilEL, WAs) = nilEL .
+  eq crossHA(E % EL1, WAs) = catEL(crossEA(E, WAs), crossHA(EL1, WAs)) .
+  eq crossEA(E, nilAL) = nilEL .
+  eq crossEA(E, w(A) %% WAs) = ap(E, A) % crossEA(E, WAs) .
+  eq xAltA(nilA) = w(nilA) %% nilAL .
+  ceq xAltA(E :: A) = crossCons(xAltE(E), xAltA(A)) if true .
+  op crossCons : EL ALs -> ALs .
+  eq crossCons(nilEL, WAs) = nilAL .
+  eq crossCons(E % EL1, WAs) = catAL(consAll(E, WAs), crossCons(EL1, WAs)) .
+  eq consAll(E, nilAL) = nilAL .
+  eq consAll(E, w(A) %% WAs) = w(E :: A) %% consAll(E, WAs) .
+  eq catAL(nilAL, WAs) = WAs .
+  eq catAL(WA1 %% WAs, WAs2) = WA1 %% catAL(WAs, WAs2) .
+
+  op addDef : St Expr Expr -> St .
+  eq addDef(S, L, Rh) = addDefs(S, xAltE(L), Rh) .
+  op addDefs : St EL Expr -> St .
+  eq addDefs(S, nilEL, Rh) = S .
+  eq addDefs(S, E % EL1, Rh) = addDefs(addDef1(S, E, Rh), EL1, Rh) .
+  op addDef1 : St Expr Expr -> St .
+  ceq addDef1(st(Ds, At, N), L, Rh)
+    = st(insDef(delDef(Ds, P, condOf(Rh2)), d(P, Rh2)), At, N)
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) /\
+       P := compileP(L2) /\
+       Rh2 := wrapCond(sbE(Rh, B), sbA(Cs, B)) .
+  var L2 : Expr . var Cs Cs1 Cs2 A0 A2 : ArgList .
+  var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
+  var Ini Inc Body : Expr . var C : Constant . var NeTL : NeTermList .
+  var NZ : NzNat . var At2 : Attrs . var Ds2 : Defs .
+  var NZI : NzInt . var NZN : NzNat . var RR : R .
+
+  *** ---------------------------------------------------- evaluator
+  op ev : St Expr -> R .
+  op evSeq : St ArgList Expr -> R .
+  op evArgs : St Expr ArgList -> R .
+  op evAll : St ArgList -> R .
+  op evHeld : St ArgList -> R .
+  op apply : St Expr -> R .
+  op tryDefs : St Term Defs Expr -> R .
+  op builtin : St Expr -> R .
+  op ifBr : St Expr ArgList -> R .
+
+  *** heads with hard-wired evaluation, handled before arg evaluation
+  op isSpecial : Expr -> Bool .
+  eq isSpecial(s('If)) = true .
+  eq isSpecial(s('Set)) = true .
+  eq isSpecial(s('SetDelayed)) = true .
+  eq isSpecial(s('Hold)) = true .
+  eq isSpecial(s('HoldForm)) = true .
+  eq isSpecial(s('CompoundExpression)) = true .
+  eq isSpecial(E) = false [owise] .
+
+  op isUnw : ArgList -> Bool .
+  eq isUnw(unw(Q, E)) = true .
+  eq isUnw(A) = false [owise] .
+  op isPropagate : ArgList -> Bool .
+  eq isPropagate(unw('Return, E)) = true .
+  eq isPropagate(unw('Throw, E)) = true .
+  eq isPropagate(A) = false [owise] .
+  *** function-application boundary: absorb Return
+  op retB : R -> R .
+  eq retB(r(S, unw('Return, E))) = r(S, E) .
+  eq retB(RR) = RR [owise] .
+
+  *** atoms and inert forms
+  eq ev(S, RA) = r(S, RA) .
+  eq ev(S, fl(FL)) = r(S, fl(FL)) .
+  eq ev(S, unw(Q, E)) = r(S, unw(Q, E)) .
+  eq ev(S, str(Str)) = r(S, str(Str)) .
+  eq ev(S, s(Q)) = apply(S, s(Q)) .
+  eq ev(S, ? Q) = r(S, ? Q) .
+  eq ev(S, ?? Q) = r(S, ?? Q) .
+  eq ev(S, ?s Q) = r(S, ?s Q) .
+  eq ev(S, ?h(Q, F)) = r(S, ?h(Q, F)) .
+  eq ev(S, ?sh(Q, F)) = r(S, ?sh(Q, F)) .
+  eq ev(S, ??h(Q, F)) = r(S, ??h(Q, F)) .
+
+  *** special heads
+  ceq ev(S0, ap(s('If), Cnd :: Rest)) = ifBr(S1, V, Rest)
+    if r(S1, V) := ev(S0, Cnd) .
+  eq ifBr(S, s('True), E :: Rest) = ev(S, E) .
+  eq ifBr(S, s('False), E :: E1 :: Rest) = ev(S, E1) .
+  eq ifBr(S, s('False), E) = r(S, s('Null)) .
+  eq ifBr(S, unw(Q, E), Rest) = r(S, unw(Q, E)) .
+  eq ifBr(S, V, Rest) = r(S, ap(s('If), V :: Rest)) [owise] .
+
+  *** definitions on Protected symbols are refused
+  op lhsHead : Expr -> Qid .
+  eq lhsHead(s(F)) = F .
+  eq lhsHead(ap(s(F), A)) = F .
+  eq lhsHead(ap(ap(H, A1), A)) = lhsHead(ap(H, A1)) .
+  eq lhsHead(E) = '$noHead [owise] .
+  op protQ : St Expr -> Bool .
+  eq protQ(st(Ds, At, N), L) = hasAttr(At, lhsHead(L), 'Protected) .
+  ceq ev(S, ap(s('SetDelayed), L :: Rh)) = r(S, s('$Failed)) if protQ(S, L) .
+  ceq ev(S, ap(s('SetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null))
+    if not protQ(S, L) .
+  ceq ev(S, ap(s('Set), L :: Rh)) = r(S, s('$Failed)) if protQ(S, L) .
+  ceq ev(S0, ap(s('Set), L :: Rh)) = r(addDef(S1, L, V), V)
+    if not protQ(S0, L) /\ r(S1, V) := ev(S0, Rh) .
+
+  eq ev(S, ap(s('Hold), A)) = r(S, ap(s('Hold), A)) .
+  eq ev(S, ap(s('HoldForm), A)) = r(S, ap(s('HoldForm), A)) .
+
+  eq ev(S, ap(s('CompoundExpression), A)) = evSeq(S, A, s('Null)) .
+  eq evSeq(S, nilA, Last) = r(S, Last) .
+  ceq evSeq(S0, E :: A, Last) = evSeqK(S1, V, A)
+    if r(S1, V) := ev(S0, E) .
+  op evSeqK : St Expr ArgList -> R .
+  ceq evSeqK(S, V, A) = r(S, V) if isUnw(V) .
+  ceq evSeqK(S0, V, A) = evSeq(S0, A, V) if not isUnw(V) .
+
+  *** generic application: evaluate head, args per Hold*, splice
+  *** Sequence, flatten (Flat), canonically order (Orderless), apply
+  ceq ev(S0, ap(H, A)) = evAp(S2, HV, AV)
+    if not isSpecial(H) /\
+       r(S1, HV) := ev(S0, H) /\
+       r(S2, AV) := evArgs(S1, HV, A) .
+  op evAp : St Expr ArgList -> R .
+  ceq evAp(S, HV, AV) = r(S, HV) if isUnw(HV) .
+  ceq evAp(S, HV, AV) = r(S, AV) if isUnw(AV) .
+  eq evAp(S, HV, AV) = apply(S, norm(S, ap(HV, AV))) [owise] .
+
+  eq evArgs(S, HV, nilA) = r(S, nilA) .
+  ceq evArgs(S, HV, A) = evHeld(S, A)
+    if hasAttrE(third(S), HV, 'HoldAll) .
+  ceq evArgs(S0, HV, E :: A) = evHeldTail(S0, E, A)
+    if hasAttrE(third(S0), HV, 'HoldRest) .
+  ceq evArgs(S0, HV, E :: A) = evAllC(S2, V, AV)
+    if hasAttrE(third(S0), HV, 'HoldFirst) /\
+       r(S1, V) := evHeld1(S0, E) /\ r(S2, AV) := evAll(S1, A) .
+  eq evArgs(S, HV, A) = evAll(S, A) [owise] .
+
+  op third : St -> Attrs .
+  eq third(st(Ds, At, N)) = At .
+
+  *** held tail helper: first arg evaluated, rest held
+  op evHeldTail : St Expr ArgList -> R .
+  ceq evHeldTail(S0, E, A) = evHTK(S1, V, A)
+    if r(S1, V) := ev(S0, E) .
+  op evHTK : St Expr ArgList -> R .
+  ceq evHTK(S, V, A) = r(S, V) if isUnw(V) .
+  ceq evHTK(S0, V, A) = r(S1, V :: AV)
+    if not isUnw(V) /\ r(S1, AV) := evHeld(S0, A) .
+
+  eq evAll(S, nilA) = r(S, nilA) .
+  ceq evAll(S0, E :: A) = evAllK(S1, V, A)
+    if r(S1, V) := ev(S0, E) .
+  op evAllK : St Expr ArgList -> R .
+  ceq evAllK(S, V, A) = r(S, V) if isUnw(V) .
+  ceq evAllK(S0, V, A) = evAllC(S1, V, AV)
+    if not isUnw(V) /\ r(S1, AV) := evAll(S0, A) .
+  *** an unwind surfacing later in the list propagates alone
+  op evAllC : St Expr ArgList -> R .
+  ceq evAllC(S, V, AV) = r(S, AV) if isUnw(AV) .
+  ceq evAllC(S, V, AV) = r(S, V :: AV) if not isUnw(AV) .
+
+  *** held args still honor Evaluate[...]
+  op evHeld1 : St Expr -> R .
+  eq evHeld1(S, ap(s('Evaluate), E)) = ev(S, E) .
+  eq evHeld1(S, E) = r(S, E) [owise] .
+  eq evHeld(S, nilA) = r(S, nilA) .
+  ceq evHeld(S0, E :: A) = r(S2, V :: AV)
+    if r(S1, V) := evHeld1(S0, E) /\ r(S2, AV) := evHeld(S1, A) .
+
+  *** normalization pipeline
+  op norm : St Expr -> Expr .
+  ceq norm(st(Ds, At, N), ap(s(F), A))
+    = ap(s(F), sortIf(At, F, flatIf(At, F, spliceIf(At, F, stripU(A)))))
+    if true .
+  eq norm(S, E) = E [owise] .
+
+  *** Unevaluated[e] passes e to the head unevaluated; the wrapper is
+  *** stripped here, after argument evaluation, before dispatch
+  op stripU : ArgList -> ArgList .
+  eq stripU(nilA) = nilA .
+  eq stripU(ap(s('Unevaluated), E) :: A) = E :: stripU(A) .
+  eq stripU(E :: A) = E :: stripU(A) [owise] .
+
+  op spliceIf : Attrs Qid ArgList -> ArgList .
+  eq spliceIf(At, F, A)
+    = if hasAttr(At, F, 'SequenceHold) then A else spliceA(A) fi .
+  op spliceA : ArgList -> ArgList .
+  eq spliceA(nilA) = nilA .
+  eq spliceA(ap(s('Sequence), A1) :: A) = A1 :: spliceA(A) .
+  eq spliceA(E :: A) = E :: spliceA(A) [owise] .
+
+  op flatIf : Attrs Qid ArgList -> ArgList .
+  eq flatIf(At, F, A) = if hasAttr(At, F, 'Flat) then flatA(F, A) else A fi .
+  op flatA : Qid ArgList -> ArgList .
+  eq flatA(F, nilA) = nilA .
+  eq flatA(F, ap(s(F), A1) :: A) = flatA(F, A1) :: flatA(F, A) .
+  eq flatA(F, E :: A) = E :: flatA(F, A) [owise] .
+
+  op sortIf : Attrs Qid ArgList -> ArgList .
+  eq sortIf(At, F, A) = if hasAttr(At, F, 'Orderless) then sortA(A) else A fi .
+
+  eq apply(st(Ds, At, 0), E) = r(st(Ds, At, 0), s('$Aborted)) .
+  ceq apply(st(Ds, At, N), E) = tryDefs(st(Ds, At, N), subj(E), Ds, E) if N > 0 .
+
+  *** dispatch guard: only attempt a metaMatch when the pattern's top
+  *** symbol can possibly match the subject's - a cheap index that
+  *** keeps unrelated definitions out of the matcher
+  op topKey : Term -> Qid .
+  eq topKey('ap['s[C], NeTL]) = getName(C) .
+  eq topKey('s[C]) = getName(C) .
+  eq topKey(T) = '$any [owise] .
+  op keyOk : Term Term -> Bool .
+  eq keyOk(P, UM)
+    = topKey(P) == '$any or topKey(UM) == '$any or topKey(P) == topKey(UM) .
+
+  *** first (most specific) definition whose pattern matches wins; a
+  *** conditional rhs evaluates its condition first and falls through to
+  *** later definitions unless it yields True; a successful application
+  *** consumes fuel and re-evaluates
+  ceq tryDefs(st(Ds0, At, s N), UM, d(P, ap(s('Condition), Rh :: Cnd)) | Ds, E)
+    = condBr(S1, V, sbE(Rh, s2b(Sb)), UM, Ds, E)
+    if keyOk(P, UM) /\ Sb := metaMatch(MOD, P, UM, nil, 0) /\
+       r(S1, V) := ev(st(Ds0, At, N), sbE(Cnd, s2b(Sb))) .
+  op condBr : St Expr Expr Term Defs Expr -> R .
+  eq condBr(S, s('True), Rh, UM, Ds, E) = retB(ev(S, Rh)) .
+  eq condBr(S, V, Rh, UM, Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
+  ceq tryDefs(st(Ds0, At, s N), UM, d(P, Rh) | Ds, E)
+    = retB(ev(st(Ds0, At, N), sbE(Rh, s2b(Sb))))
+    if not isCondRhs(Rh) /\ keyOk(P, UM) /\ Sb := metaMatch(MOD, P, UM, nil, 0) .
+  op isCondRhs : Expr -> Bool .
+  eq isCondRhs(ap(s('Condition), A)) = true .
+  eq isCondRhs(E) = false [owise] .
+  eq tryDefs(S, UM, Dd | Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
+  eq tryDefs(S, UM, noD, E) = builtin(S, E) .
+
+  *** ---------------------------------------------------- builtins
+  op lenA : ArgList -> Nat .
+  eq lenA(nilA) = 0 .
+  eq lenA(E :: A) = 1 + lenA(A) .
+
+  op bool2wl : Bool -> Expr .
+  eq bool2wl(true) = s('True) .
+  eq bool2wl(false) = s('False) .
+
+  *** Plus/Times: args arrive canonically ordered (ints first); fold the
+  *** numeric prefix, keep the symbolic tail
+  *** Plus collects like terms by symbolic part (2x + 3x -> 5x); bare
+  *** rationals are the empty-part group, so numeric folding falls out
+  op coefOf : Expr -> Rat .
+  op restOf : Expr -> ArgList .
+  eq coefOf(RA) = RA .
+  ceq coefOf(ap(s('Times), RA :: A)) = RA if lenA(A) >= 1 .
+  eq coefOf(E) = 1 [owise] .
+  eq restOf(RA) = nilA .
+  ceq restOf(ap(s('Times), RA :: A)) = A if lenA(A) >= 1 .
+  ceq restOf(ap(s('Times), E :: A)) = E :: A
+    if not (E :: Rat) /\ lenA(A) >= 1 .
+  eq restOf(E) = E [owise] .
+  op mkTerm : Rat ArgList -> Expr .
+  eq mkTerm(RA, nilA) = RA .
+  ceq mkTerm(RA, A) = 0 if RA == 0 /\ lenA(A) >= 1 .
+  ceq mkTerm(RA, E) = E if RA == 1 .
+  ceq mkTerm(RA, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if RA == 1 .
+  ceq mkTerm(RA, A) = ap(s('Times), RA :: A)
+    if RA =/= 0 /\ RA =/= 1 /\ lenA(A) >= 1 .
+  op sumCo : ArgList ArgList -> Rat .
+  eq sumCo(nilA, A1) = 0 .
+  eq sumCo(E :: A, A1)
+    = if restOf(E) == A1 then coefOf(E) + sumCo(A, A1) else sumCo(A, A1) fi .
+  op dropCo : ArgList ArgList -> ArgList .
+  eq dropCo(nilA, A1) = nilA .
+  eq dropCo(E :: A, A1)
+    = if restOf(E) == A1 then dropCo(A, A1) else E :: dropCo(A, A1) fi .
+  op collectP : ArgList -> ArgList .
+  eq collectP(nilA) = nilA .
+  eq collectP(E :: A)
+    = mkTerm(coefOf(E) + sumCo(A, restOf(E)), restOf(E))
+      :: collectP(dropCo(A, restOf(E))) .
+  op dropZeros : ArgList -> ArgList .
+  eq dropZeros(nilA) = nilA .
+  eq dropZeros(0 :: A) = dropZeros(A) .
+  eq dropZeros(E :: A) = E :: dropZeros(A) [owise] .
+  op plusOut : ArgList -> Expr .
+  eq plusOut(nilA) = 0 .
+  eq plusOut(E) = E .
+  ceq plusOut(E :: E1 :: A) = ap(s('Plus), E :: E1 :: A) if true .
+  ceq builtin(S, ap(s('Plus), A)) = r(S, plusOut(dropZeros(collectP(A))))
+    if not anyFlN(A) .
+
+  *** numeric contagion: any machine real makes the numeric part float
+  op anyFl : ArgList -> Bool .
+  eq anyFl(nilA) = false .
+  eq anyFl(fl(FL) :: A) = true .
+  eq anyFl(E :: A) = anyFl(A) [owise] .
+  op sumFl : ArgList -> Float .
+  eq sumFl(nilA) = 0.0 .
+  eq sumFl(RA :: A) = float(RA) + sumFl(A) .
+  eq sumFl(fl(FL) :: A) = FL + sumFl(A) .
+  eq sumFl(E :: A) = sumFl(A) [owise] .
+  op prodFl : ArgList -> Float .
+  eq prodFl(nilA) = 1.0 .
+  eq prodFl(RA :: A) = float(RA) * prodFl(A) .
+  eq prodFl(fl(FL) :: A) = FL * prodFl(A) .
+  eq prodFl(E :: A) = prodFl(A) [owise] .
+  op nonNumA : ArgList -> ArgList .
+  eq nonNumA(nilA) = nilA .
+  eq nonNumA(RA :: A) = nonNumA(A) .
+  eq nonNumA(fl(FL) :: A) = nonNumA(A) .
+  eq nonNumA(E :: A) = E :: nonNumA(A) [owise] .
+  *** inexact zero/one identities collapse like their exact versions
+  op plusFlOut : Float ArgList -> Expr .
+  eq plusFlOut(FL, nilA) = fl(FL) .
+  ceq plusFlOut(FL, A) = plusOut(A) if FL == 0.0 /\ lenA(A) >= 1 .
+  ceq plusFlOut(FL, A) = ap(s('Plus), fl(FL) :: A)
+    if FL =/= 0.0 /\ lenA(A) >= 1 .
+  op timesFlOut : Float ArgList -> Expr .
+  eq timesFlOut(FL, nilA) = fl(FL) .
+  ceq timesFlOut(FL, A) = fl(0.0) if FL == 0.0 /\ lenA(A) >= 1 .
+  ceq timesFlOut(FL, E) = E if FL == 1.0 .
+  ceq timesFlOut(FL, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if FL == 1.0 .
+  ceq timesFlOut(FL, A) = ap(s('Times), fl(FL) :: A)
+    if FL =/= 0.0 /\ FL =/= 1.0 /\ lenA(A) >= 1 .
+
+  *** float detection also inside Times coefficients, and float-aware
+  *** like-term collection for the inexact Plus path
+  op anyFlN : ArgList -> Bool .
+  eq anyFlN(nilA) = false .
+  eq anyFlN(fl(FL) :: A) = true .
+  eq anyFlN(ap(s('Times), fl(FL) :: A1) :: A) = true .
+  eq anyFlN(E :: A) = anyFlN(A) [owise] .
+  op coefFl : Expr -> Float .
+  eq coefFl(RA) = float(RA) .
+  eq coefFl(fl(FL)) = FL .
+  ceq coefFl(ap(s('Times), RA :: A)) = float(RA) if lenA(A) >= 1 .
+  ceq coefFl(ap(s('Times), fl(FL) :: A)) = FL if lenA(A) >= 1 .
+  eq coefFl(E) = 1.0 [owise] .
+  op restFl : Expr -> ArgList .
+  eq restFl(RA) = nilA .
+  eq restFl(fl(FL)) = nilA .
+  ceq restFl(ap(s('Times), RA :: A)) = A if lenA(A) >= 1 .
+  ceq restFl(ap(s('Times), fl(FL) :: A)) = A if lenA(A) >= 1 .
+  ceq restFl(ap(s('Times), E :: A)) = E :: A
+    if not (E :: Rat) /\ not anyFl(E) /\ lenA(A) >= 1 .
+  eq restFl(E) = E [owise] .
+  op mkTermF : Float ArgList -> Expr .
+  eq mkTermF(FL, nilA) = fl(FL) .
+  ceq mkTermF(FL, A) = fl(0.0) if FL == 0.0 /\ lenA(A) >= 1 .
+  ceq mkTermF(FL, A) = ap(s('Times), fl(FL) :: A)
+    if FL =/= 0.0 /\ lenA(A) >= 1 .
+  op sumCoF : ArgList ArgList -> Float .
+  eq sumCoF(nilA, A1) = 0.0 .
+  eq sumCoF(E :: A, A1)
+    = if restFl(E) == A1 then coefFl(E) + sumCoF(A, A1) else sumCoF(A, A1) fi .
+  op dropCoF : ArgList ArgList -> ArgList .
+  eq dropCoF(nilA, A1) = nilA .
+  eq dropCoF(E :: A, A1)
+    = if restFl(E) == A1 then dropCoF(A, A1) else E :: dropCoF(A, A1) fi .
+  op collectPF : ArgList -> ArgList .
+  eq collectPF(nilA) = nilA .
+  eq collectPF(E :: A)
+    = mkTermF(coefFl(E) + sumCoF(A, restFl(E)), restFl(E))
+      :: collectPF(dropCoF(A, restFl(E))) .
+  op dropZeroF : ArgList -> ArgList .
+  eq dropZeroF(nilA) = nilA .
+  ceq dropZeroF(fl(FL) :: A) = dropZeroF(A) if FL == 0.0 .
+  eq dropZeroF(E :: A) = E :: dropZeroF(A) [owise] .
+  ceq builtin(S, ap(s('Plus), A))
+    = r(S, plusFlOut(sumFl(A), dropZeroF(collectPF(nonNumA(A)))))
+    if anyFlN(A) .
+
+  *** Times multiplies the rational prefix and collects powers by base
+  *** so x * x -> x^2; symbolic exponents stay opaque
+  op baseOf : Expr -> Expr .
+  op expOf : Expr -> Rat .
+  ceq baseOf(ap(s('Power), E :: RA)) = E if true .
+  eq baseOf(E) = E [owise] .
+  ceq expOf(ap(s('Power), E :: RA)) = RA if true .
+  eq expOf(E) = 1 [owise] .
+  op mkFac : Expr Rat -> Expr .
+  eq mkFac(E, 0) = 1 .
+  eq mkFac(E, 1) = E .
+  ceq mkFac(E, RA) = ap(s('Power), E :: RA) if RA =/= 0 /\ RA =/= 1 .
+  op sumEx : ArgList Expr -> Rat .
+  eq sumEx(nilA, E1) = 0 .
+  eq sumEx(E :: A, E1)
+    = if baseOf(E) == E1 then expOf(E) + sumEx(A, E1) else sumEx(A, E1) fi .
+  op dropEx : ArgList Expr -> ArgList .
+  eq dropEx(nilA, E1) = nilA .
+  eq dropEx(E :: A, E1)
+    = if baseOf(E) == E1 then dropEx(A, E1) else E :: dropEx(A, E1) fi .
+  op collectF : ArgList -> ArgList .
+  eq collectF(nilA) = nilA .
+  eq collectF(E :: A)
+    = mkFac(baseOf(E), expOf(E) + sumEx(A, baseOf(E)))
+      :: collectF(dropEx(A, baseOf(E))) .
+  op dropOnes : ArgList -> ArgList .
+  eq dropOnes(nilA) = nilA .
+  eq dropOnes(1 :: A) = dropOnes(A) .
+  eq dropOnes(E :: A) = E :: dropOnes(A) [owise] .
+  op prodRat : ArgList -> Rat .
+  eq prodRat(nilA) = 1 .
+  eq prodRat(RA :: A) = RA * prodRat(A) .
+  eq prodRat(E :: A) = prodRat(A) [owise] .
+  op nonRatA : ArgList -> ArgList .
+  eq nonRatA(nilA) = nilA .
+  eq nonRatA(RA :: A) = nonRatA(A) .
+  eq nonRatA(E :: A) = E :: nonRatA(A) [owise] .
+  op timesOut : Rat ArgList -> Expr .
+  eq timesOut(RA, nilA) = RA .
+  ceq timesOut(RA, A) = 0 if RA == 0 /\ lenA(A) >= 1 .
+  ceq timesOut(RA, E) = E if RA == 1 .
+  ceq timesOut(RA, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if RA == 1 .
+  ceq timesOut(RA, A) = ap(s('Times), RA :: A)
+    if RA =/= 0 /\ RA =/= 1 /\ lenA(A) >= 1 .
+  *** collectF rewrites factors (x * x -> x^2), so the argument order
+  *** must be re-canonicalized before rebuilding the product - stale
+  *** order would make x^2*y and y*x^2 distinct to the Plus collector.
+  *** A numeric coefficient distributes over a Plus factor, as in WL:
+  *** -1*{x + y} becomes -x - y, which is what makes a - a cancel.
+  op scaleP : Rat ArgList -> ArgList .
+  eq scaleP(RA, nilA) = nilA .
+  eq scaleP(RA, E :: A) = ap(s('Times), RA :: E) :: scaleP(RA, A) .
+  op timesFin : St Rat ArgList -> R .
+  ceq timesFin(S, RA, A :: ap(s('Plus), A1) :: A2)
+    = ev(S, ap(s('Times), A :: ap(s('Plus), scaleP(RA, A1)) :: A2))
+    if RA =/= 1 /\ RA =/= 0 .
+  eq timesFin(S, RA, A) = r(S, timesOut(RA, A)) [owise] .
+  ceq builtin(S, ap(s('Times), A))
+    = timesFin(S, prodRat(A), sortA(dropOnes(collectF(nonRatA(A)))))
+    if not anyFl(A) .
+  ceq builtin(S, ap(s('Times), A))
+    = r(S, timesFlOut(prodFl(A), sortA(dropOnes(collectF(nonNumA(A))))))
+    if anyFl(A) .
+
+  ceq builtin(S, ap(s('Power), fl(FL) :: fl(FL2))) = r(S, fl(FL ^ FL2)) if true .
+  eq builtin(S, ap(s('Power), fl(FL) :: RA)) = r(S, fl(FL ^ float(RA))) .
+  eq builtin(S, ap(s('Power), RA :: fl(FL))) = r(S, fl(float(RA) ^ FL)) .
+  ceq builtin(S, ap(s('Power), RA :: J)) = r(S, RA ^ J) if J >= 0 .
+  *** exact square roots of perfect squares; other radicals stay
+  *** symbolic as e^{1/2}. NAT has no sqrt - bisection floor root.
+  op isqN : Nat -> Nat .
+  op isqB : Nat Nat Nat -> Nat .
+  eq isqN(N) = isqB(N, 0, N + 1) .
+  ceq isqB(N, N1, N2) = N1 if N2 <= N1 + 1 .
+  ceq isqB(N, N1, N2)
+    = if ((N1 + N2) quo 2) * ((N1 + N2) quo 2) <= N
+      then isqB(N, (N1 + N2) quo 2, N2)
+      else isqB(N, N1, (N1 + N2) quo 2) fi
+    if N2 > N1 + 1 .
+  op psq : Nat -> Bool .
+  eq psq(N) = isqN(N) * isqN(N) == N .
+  ceq builtin(S, ap(s('Power), N :: 1/2)) = r(S, isqN(N)) if psq(N) .
+  ceq builtin(S, ap(s('Power), NZI / NZN :: 1/2)) = r(S, isqN(N) / isqN(N2))
+    if NZI > 0 /\ N := NZI /\ N2 := NZN /\ psq(N) /\ psq(N2) .
+  *** denesting: the largest square divisor comes out of the radical,
+  *** so Sqrt of 8 is 2 times Sqrt of 2
+  op sqDiv : Nat Nat -> Nat .
+  eq sqDiv(N, 0) = 1 .
+  ceq sqDiv(N, s N1) = s N1 if (s N1) * (s N1) divides N .
+  eq sqDiv(N, s N1) = sqDiv(N, N1) [owise] .
+  ceq builtin(S, ap(s('Power), N :: 1/2))
+    = r(S, ap(s('Times), N2 :: ap(s('Power), (N quo (N2 * N2)) :: 1/2)))
+    if not psq(N) /\ N2 := sqDiv(N, isqN(N)) /\ N2 > 1 .
+  ceq builtin(S, ap(s('Power), NZI / NZN :: 1/2))
+    = ev(S, ap(s('Times), (1 / isqN(N2)) :: ap(s('Power), N :: 1/2)))
+    if NZI > 0 /\ N := NZI /\ N2 := NZN /\ psq(N2) /\ not psq(N) .
+  *** an integer power distributes over a product's rational
+  *** coefficient, as in WL: {2 x}^2 is 4 x^2
+  ceq builtin(S, ap(s('Power), ap(s('Times), RA :: A) :: J))
+    = ev(S, ap(s('Times), ap(s('Power), RA :: J)
+                 :: ap(s('Power), timesOut(1, A) :: J)))
+    if lenA(A) >= 1 .
+  *** an integer power of a rational power collapses, as in WL
+  ceq builtin(S, ap(s('Power), ap(s('Power), E :: RA) :: J))
+    = builtin(S, ap(s('Power), E :: (RA * J))) if not (RA :: Int) .
+  eq builtin(S, ap(s('Power), E :: 0)) = r(S, 1) [owise] .
+  eq builtin(S, ap(s('Power), E :: 1)) = r(S, E) [owise] .
+  ceq builtin(S, ap(s('Power), RA :: J)) = r(S, 1 / (RA ^ (- J)))
+    if J < 0 /\ RA =/= 0 .
+  eq builtin(S, ap(s('Divide), RA :: RB)) = r(S, RA / RB) .
+  eq builtin(S, ap(s('Numerator), I)) = r(S, I) .
+  eq builtin(S, ap(s('Numerator), NZI / NZN)) = r(S, NZI) .
+  eq builtin(S, ap(s('Denominator), I)) = r(S, 1) .
+  eq builtin(S, ap(s('Denominator), NZI / NZN)) = r(S, NZN) .
+  eq builtin(S, ap(s('Less), RA :: RB)) = r(S, bool2wl(RA < RB)) .
+  eq builtin(S, ap(s('Greater), RA :: RB)) = r(S, bool2wl(RA > RB)) .
+  eq builtin(S, ap(s('LessEqual), RA :: RB)) = r(S, bool2wl(RA <= RB)) .
+  eq builtin(S, ap(s('GreaterEqual), RA :: RB)) = r(S, bool2wl(RA >= RB)) .
+  eq builtin(S, ap(s('Equal), RA :: RB)) = r(S, bool2wl(RA == RB)) .
+  ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, s('True)) if E == E1 .
+
+  *** mixed-mode comparisons through float
+  op numF : Expr ~> Float .
+  eq numF(RA) = float(RA) .
+  eq numF(fl(FL)) = FL .
+  ceq builtin(S, ap(s('Less), E :: E1)) = r(S, bool2wl(FL < FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('Greater), E :: E1)) = r(S, bool2wl(FL > FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('LessEqual), E :: E1)) = r(S, bool2wl(FL <= FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('GreaterEqual), E :: E1)) = r(S, bool2wl(FL >= FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, bool2wl(FL == FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('Unequal), E :: E1)) = r(S, bool2wl(FL =/= FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+
+  *** N and float elementary functions
+  op nE1 : Expr -> Expr .
+  op nEA : ArgList -> ArgList .
+  eq nE1(RA) = fl(float(RA)) .
+  eq nE1(s('Pi)) = fl(pi) .
+  eq nE1(ap(H, A)) = ap(nE1(H), nEA(A)) .
+  eq nE1(E) = E [owise] .
+  eq nEA(nilA) = nilA .
+  eq nEA(E :: A) = nE1(E) :: nEA(A) .
+  eq builtin(S, ap(s('N), E)) = ev(S, nE1(E)) .
+  eq builtin(S, ap(s('Sin), fl(FL))) = r(S, fl(sin(FL))) .
+  eq builtin(S, ap(s('Cos), fl(FL))) = r(S, fl(cos(FL))) .
+  eq builtin(S, ap(s('Exp), fl(FL))) = r(S, fl(exp(FL))) .
+  ceq builtin(S, ap(s('Log), fl(FL))) = r(S, fl(log(FL))) if FL > 0.0 .
+  ceq builtin(S, ap(s('Sqrt), fl(FL))) = r(S, fl(sqrt(FL))) if FL >= 0.0 .
+  eq builtin(S, ap(s('ArcTan), fl(FL))) = r(S, fl(atan(FL))) .
+  eq builtin(S, ap(s('Abs), fl(FL))) = r(S, fl(abs(FL))) .
+
+  eq builtin(S, ap(s('Head), ap(H, A))) = r(S, H) .
+  eq builtin(S, ap(s('Head), I)) = r(S, s('Integer)) .
+  ceq builtin(S, ap(s('Head), RA)) = r(S, s('Rational)) if not (RA :: Int) .
+  eq builtin(S, ap(s('Head), str(Str))) = r(S, s('String)) .
+  eq builtin(S, ap(s('Head), s(Q))) = r(S, s('Symbol)) .
+  eq builtin(S, ap(s('Head), fl(FL))) = r(S, s('Real)) .
+  eq builtin(S, ap(s('Length), ap(H, A))) = r(S, lenA(A)) .
+  eq builtin(S, ap(s('Length), RA)) = r(S, 0) .
+  eq builtin(S, ap(s('Length), str(Str))) = r(S, 0) .
+  eq builtin(S, ap(s('Length), s(Q))) = r(S, 0) .
+
+  eq builtin(S, ap(s('Evaluate), E)) = r(S, E) .
+
+  *** logic + integer predicates (used heavily by conditions)
+  eq builtin(S, ap(s('And), nilA)) = r(S, s('True)) .
+  ceq builtin(S, ap(s('And), s('False) :: A)) = r(S, s('False)) if true .
+  eq builtin(S, ap(s('And), s('True) :: A)) = builtin(S, ap(s('And), A)) .
+  eq builtin(S, ap(s('And), E)) = r(S, E) .
+  eq builtin(S, ap(s('Or), nilA)) = r(S, s('False)) .
+  ceq builtin(S, ap(s('Or), s('True) :: A)) = r(S, s('True)) if true .
+  eq builtin(S, ap(s('Or), s('False) :: A)) = builtin(S, ap(s('Or), A)) .
+  eq builtin(S, ap(s('Or), E)) = r(S, E) .
+  eq builtin(S, ap(s('Not), s('True))) = r(S, s('False)) .
+  eq builtin(S, ap(s('Not), s('False))) = r(S, s('True)) .
+  eq builtin(S, ap(s('NumberQ), RA)) = r(S, s('True)) .
+  eq builtin(S, ap(s('NumberQ), fl(FL))) = r(S, s('True)) .
+  ceq builtin(S, ap(s('NumberQ), E)) = r(S, s('False))
+    if not (E :: Rat) /\ not anyFl(E) .
+  eq builtin(S, ap(s('EvenQ), I)) = r(S, bool2wl(I rem 2 == 0)) .
+  eq builtin(S, ap(s('OddQ), I)) = r(S, bool2wl(I rem 2 =/= 0)) .
+  eq builtin(S, ap(s('IntegerQ), I)) = r(S, s('True)) .
+  ceq builtin(S, ap(s('IntegerQ), E)) = r(S, s('False)) if not (E :: Int) .
+
+  *** attribute builtins
+  eq builtin(st(Ds, At, N), ap(s('Attributes), s(F)))
+    = r(st(Ds, At, N), ap(s('List), attrsOf(At, F))) .
+  eq builtin(st(Ds, At, N), ap(s('SetAttributes), s(F) :: s(AT)))
+    = r(st(Ds, at(F, AT) && delAt(At, F, AT), N), s('Null)) .
+  eq builtin(st(Ds, At, N), ap(s('SetAttributes), s(F) :: ap(s('List), A)))
+    = r(st(Ds, addAts(At, F, A), N), s('Null)) .
+  op addAts : Attrs Qid ArgList -> Attrs .
+  eq addAts(At, F, nilA) = At .
+  eq addAts(At, F, s(AT) :: A) = addAts(at(F, AT) && delAt(At, F, AT), F, A) .
+  eq builtin(st(Ds, At, N), ap(s('ClearAttributes), s(F) :: s(AT)))
+    = r(st(Ds, delAt(At, F, AT), N), s('Null)) .
+
+  *** rules for /. and //. compile like definitions: lhs Condition /
+  *** PatternTest / sequence constraints hoist into an rhs Condition
+  op compileRule1 : Expr Expr -> Def .
+  ceq compileRule1(L, Rh) = d(compileP(L2), wrapCond(sbE(Rh, B), sbA(Cs, B)))
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) .
+  op compileRules : ArgList -> Defs .
+  eq compileRules(ap(s('Rule), L :: Rh)) = compileRule1(L, Rh) | noD .
+  eq compileRules(ap(s('RuleDelayed), L :: Rh)) = compileRule1(L, Rh) | noD .
+  eq compileRules(ap(s('List), A)) = compileRulesL(A) .
+  op compileRulesL : ArgList -> Defs .
+  eq compileRulesL(nilA) = noD .
+  eq compileRulesL(ap(s('Rule), L :: Rh) :: A)
+    = compileRule1(L, Rh) | compileRulesL(A) .
+  eq compileRulesL(ap(s('RuleDelayed), L :: Rh) :: A)
+    = compileRule1(L, Rh) | compileRulesL(A) .
+
+  *** state-aware replacement: outermost, once per subtree; rule
+  *** conditions evaluate per match solution, backtracking over
+  *** sequence splits; descend flag false = try this node only
+  var Bo : Bool . var K : Int .
+  op raE : St Expr Defs -> R .
+  op raA : St ArgList Defs -> R .
+  op raT : St Bool Expr Defs Defs -> R .
+  op raLoop : St Bool Expr Term Expr Expr Nat Defs Defs -> R .
+  op raK : St Expr Bool Expr Expr Term Expr Expr Nat Defs Defs -> R .
+  eq raE(S, E, Ds) = raT(S, true, E, Ds, Ds) .
+  ceq raT(S, Bo, E, d(P, ap(s('Condition), Rh :: Cnd)) | Ds, Ds0)
+    = raLoop(S, Bo, E, P, Rh, mkCnd(Cnd), 0, Ds, Ds0) if true .
+  ceq raT(S, Bo, E, d(P, Rh) | Ds, Ds0) = r(S, sbE(Rh, s2b(Sb)))
+    if not isCondRhs(Rh) /\ Sb := metaMatch(MOD, P, subj(E), nil, 0) .
+  eq raT(S, Bo, E, Dd | Ds, Ds0) = raT(S, Bo, E, Ds, Ds0) [owise] .
+  ceq raT(S0, true, ap(H, A), noD, Ds0) = r(S2, ap(HV, AV))
+    if r(S1, HV) := raE(S0, H, Ds0) /\ r(S2, AV) := raA(S1, A, Ds0) .
+  eq raT(S, Bo, E, noD, Ds0) = r(S, E) [owise] .
+  eq raA(S, nilA, Ds0) = r(S, nilA) .
+  ceq raA(S0, E :: A, Ds0) = r(S2, V :: AV)
+    if r(S1, V) := raE(S0, E, Ds0) /\ r(S2, AV) := raA(S1, A, Ds0) .
+  ceq raLoop(S0, Bo, E, P, Rh, Cnd, N, Ds, Ds0)
+    = raK(S1, V, Bo, E, sbE(Rh, s2b(Sb)), P, Rh, Cnd, N, Ds, Ds0)
+    if Sb := metaMatch(MOD, P, subj(E), nil, N) /\
+       r(S1, V) := ev(S0, sbE(Cnd, s2b(Sb))) .
+  eq raLoop(S, Bo, E, P, Rh, Cnd, N, Ds, Ds0) = raT(S, Bo, E, Ds, Ds0) [owise] .
+  eq raK(S, s('True), Bo, E, V2, P, Rh, Cnd, N, Ds, Ds0) = r(S, V2) .
+  eq raK(S, V, Bo, E, V2, P, Rh, Cnd, N, Ds, Ds0)
+    = raLoop(S, Bo, E, P, Rh, Cnd, N + 1, Ds, Ds0) [owise] .
+
+  op raFin : St Expr Expr -> R .
+  ceq raFin(S, E, V) = r(S, E) if V == E .
+  ceq raFin(S0, E, V) = ev(S0, V) if V =/= E .
+  ceq builtin(S0, ap(s('ReplaceAll), E :: E1)) = raFin(S1, E, V)
+    if r(S1, V) := raE(S0, E, compileRules(E1)) .
+
+  *** ReplaceRepeated: replace + evaluate until a fixed point
+  op rrLoop : St Expr Defs Nat -> R .
+  op rrK : St Expr Expr Defs Nat -> R .
+  op rrK2 : St Expr Expr Defs Nat -> R .
+  eq rrLoop(S, E, Ds, 0) = r(S, E) .
+  ceq rrLoop(S0, E, Ds, s N) = rrK(S1, E, V, Ds, N)
+    if r(S1, V) := raE(S0, E, Ds) .
+  ceq rrK(S0, E, V, Ds, N) = rrK2(S1, E, V2, Ds, N)
+    if r(S1, V2) := ev(S0, V) .
+  ceq rrK2(S, E, V2, Ds, N) = r(S, E) if V2 == E .
+  ceq rrK2(S, E, V2, Ds, N) = rrLoop(S, V2, Ds, N) if V2 =/= E .
+  eq builtin(S, ap(s('ReplaceRepeated), E :: E1))
+    = rrLoop(S, E, compileRules(E1), 1000) .
+
+  *** Replace with level specs; standard specs n / {n} / {a, b} /
+  *** Infinity; default level {0}
+  op lvLo : Expr ~> Int .
+  op lvHi : Expr ~> Int .
+  eq lvLo(I) = 1 .
+  eq lvHi(I) = I .
+  eq lvLo(s('Infinity)) = 1 .
+  eq lvHi(s('Infinity)) = 1000000 .
+  eq lvLo(ap(s('List), I)) = I .
+  eq lvHi(ap(s('List), I)) = I .
+  eq lvLo(ap(s('List), I :: J)) = I .
+  eq lvHi(ap(s('List), I :: J)) = J .
+  eq lvLo(ap(s('List), I :: s('Infinity))) = I .
+  eq lvHi(ap(s('List), I :: s('Infinity))) = 1000000 .
+  op raLev : St Expr Defs Int Int Int -> R .
+  op raLevK : St Expr Expr Defs Int Int Int -> R .
+  op raLevD : St Expr Defs Int Int Int -> R .
+  op raLevA : St ArgList Defs Int Int Int -> R .
+  ceq raLev(S0, E, Ds, I, J, K) = raLevK(S1, E, V, Ds, I, J, K)
+    if K >= I /\ K <= J /\ r(S1, V) := raT(S0, false, E, Ds, Ds) .
+  ceq raLev(S, E, Ds, I, J, K) = raLevD(S, E, Ds, I, J, K)
+    if K < I or K > J .
+  ceq raLevK(S, E, V, Ds, I, J, K) = raLevD(S, E, Ds, I, J, K) if V == E .
+  ceq raLevK(S, E, V, Ds, I, J, K) = r(S, V) if V =/= E .
+  ceq raLevD(S0, ap(H, A), Ds, I, J, K) = r(S1, ap(H, AV))
+    if K < J /\ r(S1, AV) := raLevA(S0, A, Ds, I, J, K + 1) .
+  eq raLevD(S, E, Ds, I, J, K) = r(S, E) [owise] .
+  eq raLevA(S, nilA, Ds, I, J, K) = r(S, nilA) .
+  ceq raLevA(S0, E :: A, Ds, I, J, K) = r(S2, V :: AV)
+    if r(S1, V) := raLev(S0, E, Ds, I, J, K) /\
+       r(S2, AV) := raLevA(S1, A, Ds, I, J, K) .
+  ceq builtin(S0, ap(s('Replace), E :: E1)) = raFin(S1, E, V)
+    if r(S1, V) := raLev(S0, E, compileRules(E1), 0, 0, 0) .
+  ceq builtin(S0, ap(s('Replace), E :: E1 :: E2)) = raFin(S1, E, V)
+    if r(S1, V) := raLev(S0, E, compileRules(E1), lvLo(E2), lvHi(E2), 0) .
+
+  *** pattern predicates (rule conditions inside these patterns are not
+  *** yet honored - Phase 2 remainder)
+  op matchesQ : Expr Expr -> Bool .
+  ceq matchesQ(E, L) = true if Sb := metaMatch(MOD, compileP(L), subj(E), nil, 0) .
+  eq matchesQ(E, L) = false [owise] .
+
+  *** sequence-blank support predicates (targets of hoisted conditions)
+  op headIs : Expr Qid -> Bool .
+  ceq headIs(RA, 'Integer) = true if RA :: Int .
+  ceq headIs(RA, 'Rational) = true if not (RA :: Int) .
+  eq headIs(str(Str), 'String) = true .
+  eq headIs(s(Q), 'Symbol) = true .
+  eq headIs(fl(FL), 'Real) = true .
+  eq headIs(ap(s(F), A), F) = true .
+  eq headIs(E, F) = false [owise] .
+  op allHeadA : ArgList Qid -> Bool .
+  eq allHeadA(nilA, F) = true .
+  eq allHeadA(E :: A, F) = headIs(E, F) and allHeadA(A, F) .
+  eq builtin(S, ap(s('$AllHeadQ), ap(s('List), A) :: s(F)))
+    = r(S, bool2wl(allHeadA(A, F))) .
+  op allMatchA : ArgList Expr -> Bool .
+  eq allMatchA(nilA, L) = true .
+  eq allMatchA(E :: A, L) = matchesQ(E, L) and allMatchA(A, L) .
+  eq builtin(S, ap(s('$AllMatchQ), ap(s('List), A) :: L))
+    = r(S, bool2wl(allMatchA(A, L))) .
+
+  *** MatchQ hoists the pattern like a definition would and evaluates
+  *** the hoisted conditions per match solution (backtracking over
+  *** sequence splits until one satisfies them)
+  op matchQLoop : St Term Term Expr Nat -> R .
+  op matchQK : St Expr Term Term Expr Nat -> R .
+  ceq matchQLoop(S0, P, UM, Cnd, N) = matchQK(S1, V, P, UM, Cnd, N)
+    if Sb := metaMatch(MOD, P, UM, nil, N) /\
+       r(S1, V) := ev(S0, sbE(Cnd, s2b(Sb))) .
+  eq matchQLoop(S, P, UM, Cnd, N) = r(S, s('False)) [owise] .
+  eq matchQK(S, s('True), P, UM, Cnd, N) = r(S, s('True)) .
+  eq matchQK(S, V, P, UM, Cnd, N) = matchQLoop(S, P, UM, Cnd, N + 1) [owise] .
+  ceq builtin(S, ap(s('MatchQ), E :: L))
+    = matchQLoop(S, compileP(L2), subj(E), mkCnd(sbA(Cs, B)), 0)
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) .
+
+  op freeE : Expr Expr -> Bool .
+  op freeA : ArgList Expr -> Bool .
+  ceq freeE(E, L) = false if matchesQ(E, L) .
+  eq freeE(ap(H, A), L) = freeE(H, L) and freeA(A, L) [owise] .
+  eq freeE(E, L) = true [owise] .
+  eq freeA(nilA, L) = true .
+  eq freeA(E :: A, L) = freeE(E, L) and freeA(A, L) .
+  eq builtin(S, ap(s('FreeQ), E :: E1)) = r(S, bool2wl(freeE(E, E1))) .
+
+  op casesA : ArgList Expr -> ArgList .
+  eq casesA(nilA, L) = nilA .
+  eq casesA(E :: A, L)
+    = if matchesQ(E, L) then E :: casesA(A, L) else casesA(A, L) fi .
+  eq builtin(S, ap(s('Cases), ap(H, A) :: E1)) = r(S, ap(s('List), casesA(A, E1))) .
+  eq builtin(S, ap(s('Count), ap(H, A) :: E1)) = r(S, lenA(casesA(A, E1))) .
+
+  *** Cases with a level spec: pre-order, matched nodes not descended
+  op casesLev : Expr Expr Int Int Int -> ArgList .
+  op casesLevD : Expr Expr Int Int Int -> ArgList .
+  op casesLevA : ArgList Expr Int Int Int -> ArgList .
+  eq casesLev(E, L, I, J, K)
+    = if K >= I and K <= J and matchesQ(E, L)
+      then E
+      else casesLevD(E, L, I, J, K) fi .
+  ceq casesLevD(ap(H, A), L, I, J, K) = casesLevA(A, L, I, J, K + 1) if K < J .
+  eq casesLevD(E, L, I, J, K) = nilA [owise] .
+  eq casesLevA(nilA, L, I, J, K) = nilA .
+  eq casesLevA(E :: A, L, I, J, K)
+    = casesLev(E, L, I, J, K) :: casesLevA(A, L, I, J, K) .
+  eq builtin(S, ap(s('Cases), ap(H, A) :: E1 :: E2))
+    = r(S, ap(s('List), casesLevA(A, E1, lvLo(E2), lvHi(E2), 1))) .
+
+  *** Position: index paths of matching subexpressions, all levels,
+  *** heads not visited; the whole expression matches at {}
+  op posE : Expr Expr ArgList -> ArgList .
+  op posSub : Expr Expr ArgList -> ArgList .
+  op posA : ArgList NzNat Expr ArgList -> ArgList .
+  eq posE(E, L, A1)
+    = if matchesQ(E, L) then ap(s('List), A1) else nilA fi
+      :: posSub(E, L, A1) .
+  eq posSub(ap(H, A), L, A1) = posA(A, 1, L, A1) .
+  eq posSub(E, L, A1) = nilA [owise] .
+  eq posA(nilA, NZ, L, A1) = nilA .
+  eq posA(E :: A, NZ, L, A1)
+    = posE(E, L, A1 :: NZ) :: posA(A, NZ + 1, L, A1) .
+  eq builtin(S, ap(s('Position), E :: L))
+    = r(S, ap(s('List), posE(E, L, nilA))) .
+
+  *** Function application: Function[body][args] with Slot[n], and
+  *** Function[{vars}, body][args]. Slots do not reach into nested
+  *** Function bodies.
+  op nthA : ArgList Nat ~> Expr .
+  eq nthA(E :: A, 1) = E .
+  ceq nthA(E :: A, s N) = nthA(A, N) if N > 0 .
+  op slotE : Expr ArgList -> Expr .
+  op slotA : ArgList ArgList -> ArgList .
+  ceq slotE(ap(s('Slot), I), A) = E2 if E2 := nthA(A, I) .
+  eq slotE(ap(s('Function), A1), A) = ap(s('Function), A1) .
+  eq slotE(ap(H, A1), A) = ap(slotE(H, A), slotA(A1, A)) [owise] .
+  eq slotE(E, A) = E [owise] .
+  eq slotA(nilA, A) = nilA .
+  eq slotA(E :: A1, A) = slotE(E, A) :: slotA(A1, A) .
+  op varsB : ArgList ArgList -> Bnds .
+  eq varsB(nilA, A) = noBnds .
+  eq varsB(s(Q) :: A1, E :: A) = bnd(Q, E) & varsB(A1, A) .
+  eq builtin(S, ap(ap(s('Function), ap(s('List), A1) :: E), A))
+    = retB(ev(S, sbE(E, varsB(A1, A)))) .
+  *** Function[x, body] - single variable without list braces
+  ceq builtin(S, ap(ap(s('Function), s(Q) :: E), A))
+    = retB(ev(S, sbE(E, varsB(s(Q), A)))) if lenA(A) >= 1 .
+  ceq builtin(S, ap(ap(s('Function), E), A)) = retB(ev(S, slotE(E, A)))
+    if not isListFn(E) .
+  op isListFn : ArgList -> Bool .
+  eq isListFn(ap(s('List), A) :: E) = true .
+  eq isListFn(A) = false [owise] .
+
+  *** structural builtins
+  op mapF : Expr ArgList -> ArgList .
+  eq mapF(H, nilA) = nilA .
+  eq mapF(H, E :: A) = ap(H, E) :: mapF(H, A) .
+  eq builtin(S, ap(s('Map), H :: ap(E, A))) = ev(S, ap(E, mapF(H, A))) .
+  eq builtin(S, ap(s('Apply), H :: ap(E, A))) = ev(S, ap(H, A)) .
+  op mkRange : Int Int -> ArgList .
+  ceq mkRange(I, J) = I :: mkRange(I + 1, J) if I <= J .
+  eq mkRange(I, J) = nilA [owise] .
+  eq builtin(S, ap(s('Range), I)) = r(S, ap(s('List), mkRange(1, I))) .
+  eq builtin(S, ap(s('Range), I :: J)) = r(S, ap(s('List), mkRange(I, J))) .
+  eq builtin(S, ap(s('First), ap(H, E :: A))) = r(S, E) .
+  eq builtin(S, ap(s('Rest), ap(H, E :: A))) = r(S, ap(H, A)) .
+  eq builtin(S, ap(s('Total), ap(H, A))) = ev(S, ap(s('Plus), A)) .
+
+  *** ---------------------------------------------- Listable threading
+  *** a Listable head threads elementwise over its List arguments,
+  *** broadcasting scalars; mismatched List lengths fall through inert
+  op anyList : ArgList -> Bool .
+  eq anyList(nilA) = false .
+  eq anyList(ap(s('List), A) :: A1) = true .
+  eq anyList(E :: A1) = anyList(A1) [owise] .
+  op allLists : ArgList -> Bool .
+  eq allLists(nilA) = true .
+  eq allLists(ap(s('List), A) :: A1) = allLists(A1) .
+  eq allLists(A) = false [owise] .
+  op firstLen : ArgList ~> Nat .
+  eq firstLen(ap(s('List), A) :: A1) = lenA(A) .
+  eq firstLen(E :: A1) = firstLen(A1) [owise] .
+  op okLens : ArgList Nat -> Bool .
+  eq okLens(nilA, N) = true .
+  eq okLens(ap(s('List), A) :: A1, N) = (lenA(A) == N) and okLens(A1, N) .
+  eq okLens(E :: A1, N) = okLens(A1, N) [owise] .
+  op nthOr : Expr NzNat -> Expr .
+  ceq nthOr(ap(s('List), A), NZ) = E2 if E2 := nthA(A, NZ) .
+  eq nthOr(E, NZ) = E [owise] .
+  op threadRow : ArgList NzNat -> ArgList .
+  eq threadRow(nilA, NZ) = nilA .
+  eq threadRow(E :: A, NZ) = nthOr(E, NZ) :: threadRow(A, NZ) .
+  op threadRows : Expr ArgList NzNat Nat -> ArgList .
+  ceq threadRows(HV, AV, NZ, N) = ap(HV, threadRow(AV, NZ)) :: threadRows(HV, AV, NZ + 1, N)
+    if NZ <= N .
+  eq threadRows(HV, AV, NZ, N) = nilA [owise] .
+  ceq evAp(S, HV, AV) = ev(S, ap(s('List), threadRows(HV, AV, 1, firstLen(AV))))
+    if hasAttrE(third(S), HV, 'Listable) /\ anyList(AV) /\
+       okLens(AV, firstLen(AV)) .
+
+  *** Thread / MapThread reuse the same row machinery
+  ceq builtin(S, ap(s('Thread), ap(HV, AV)))
+    = ev(S, ap(s('List), threadRows(HV, AV, 1, firstLen(AV))))
+    if anyList(AV) /\ okLens(AV, firstLen(AV)) .
+  ceq builtin(S, ap(s('MapThread), HV :: ap(s('List), AV)))
+    = ev(S, ap(s('List), threadRows(HV, AV, 1, firstLen(AV))))
+    if allLists(AV) /\ anyList(AV) /\ okLens(AV, firstLen(AV)) .
+
+  *** NestWhile: apply H while the test holds (bounded)
+  op nwB : St Expr Expr Expr Nat -> R .
+  op nwT : St Expr Expr Expr Expr Nat -> R .
+  op nwK : St Expr Expr Expr Nat -> R .
+  eq nwB(S, H, E, V, 0) = r(S, s('$Aborted)) .
+  ceq nwB(S0, H, E, V, s N) = nwT(S1, V2, H, E, V, N)
+    if r(S1, V2) := ev(S0, ap(V, E)) .
+  ceq nwT(S0, s('True), H, E, V, N) = nwK(S1, V2, H, V, N)
+    if r(S1, V2) := ev(S0, ap(H, E)) .
+  eq nwT(S, V2, H, E, V, N) = r(S, E) [owise] .
+  eq nwK(S, E, H, V, N) = nwB(S, H, E, V, N) .
+  eq builtin(S, ap(s('NestWhile), H :: E :: V)) = nwB(S, H, E, V, 100000) .
+
+  *** Sort with an ordering function: insertion sort, predicate
+  *** evaluated through the state (p[a, b] True means a before b)
+  op sortPB : St Expr ArgList -> R .
+  op insPB : St Expr Expr ArgList -> R .
+  op insPK : St Expr Expr Expr ArgList -> R .
+  eq sortPB(S, H, nilA) = r(S, nilA) .
+  ceq sortPB(S0, H, E :: A) = insPB(S1, H, E, AV)
+    if r(S1, AV) := sortPB(S0, H, A) .
+  eq insPB(S, H, E, nilA) = r(S, E) .
+  ceq insPB(S0, H, E, E1 :: A) = insPK(S1, V, H, E, E1 :: A)
+    if r(S1, V) := ev(S0, ap(H, E :: E1)) .
+  ceq insPK(S0, s('False), H, E, E1 :: A) = r(S1, E1 :: AV)
+    if r(S1, AV) := insPB(S0, H, E, A) .
+  eq insPK(S, V, H, E, A) = r(S, E :: A) [owise] .
+  ceq builtin(S0, ap(s('Sort), ap(E1, A) :: HV)) = r(S1, ap(E1, AV))
+    if r(S1, AV) := sortPB(S0, HV, A) .
+
+  *** Tuples: cartesian products over lists
+  op consFront : Expr ArgList -> ArgList .
+  eq consFront(E, nilA) = nilA .
+  eq consFront(E, ap(s('List), A) :: A1) = ap(s('List), E :: A) :: consFront(E, A1) .
+  op consEach : ArgList ArgList -> ArgList .
+  eq consEach(nilA, A1) = nilA .
+  eq consEach(E :: A, A1) = consFront(E, A1) :: consEach(A, A1) .
+  op cartL : ArgList -> ArgList .
+  eq cartL(nilA) = ap(s('List), nilA) .
+  eq cartL(ap(s('List), A) :: A1) = consEach(A, cartL(A1)) .
+  op repL : Expr Nat -> ArgList .
+  eq repL(E, 0) = nilA .
+  ceq repL(E, s N) = E :: repL(E, N) if true .
+  ceq builtin(S, ap(s('Tuples), ap(s('List), A))) = r(S, ap(s('List), cartL(A)))
+    if allLists(A) .
+  ceq builtin(S, ap(s('Tuples), ap(s('List), A) :: N))
+    = r(S, ap(s('List), cartL(repL(ap(s('List), A), N)))) if true .
+
+  *** control flow: builtins receive held arguments (HoldAll) and
+  *** drive evaluation themselves, fuel-bounded
+  op whileB : St Expr ArgList -> R .
+  eq whileB(st(Ds, At, 0), Cnd, A) = r(st(Ds, At, 0), s('$Aborted)) .
+  ceq whileB(st(Ds, At, s N), Cnd, A)
+    = if V == s('True) then whileNext(S1, Cnd, A) else r(S1, s('Null)) fi
+    if r(S1, V) := ev(st(Ds, At, N), Cnd) .
+  op whileNext : St Expr ArgList -> R .
+  ceq whileNext(S0, Cnd, A) = whileK(S1, V, Cnd, A)
+    if r(S1, V) := evSeq(S0, A, s('Null)) .
+  op whileK : St Expr Expr ArgList -> R .
+  eq whileK(S, unw('Break, E), Cnd, A) = r(S, s('Null)) .
+  eq whileK(S, unw('Continue, E), Cnd, A) = whileB(S, Cnd, A) .
+  ceq whileK(S, V, Cnd, A) = r(S, V) if isPropagate(V) .
+  ceq whileK(S, V, Cnd, A) = whileB(S, Cnd, A) if not isUnw(V) .
+  eq builtin(S, ap(s('While), Cnd :: A)) = whileB(S, Cnd, A) .
+
+  op doIter : St Expr Qid Int Int -> R .
+  ceq doIter(S0, E, Q, I, J) = doK(S1, V, E, Q, I, J)
+    if I <= J /\ r(S1, V) := ev(S0, sbE(E, bnd(Q, I))) .
+  ceq doIter(S, E, Q, I, J) = r(S, s('Null)) if I > J .
+  op doK : St Expr Expr Qid Int Int -> R .
+  eq doK(S, unw('Break, E1), E, Q, I, J) = r(S, s('Null)) .
+  eq doK(S, unw('Continue, E1), E, Q, I, J) = doIter(S, E, Q, I + 1, J) .
+  ceq doK(S, V, E, Q, I, J) = r(S, V) if isPropagate(V) .
+  ceq doK(S, V, E, Q, I, J) = doIter(S, E, Q, I + 1, J) if not isUnw(V) .
+  eq builtin(S, ap(s('Do), E :: ap(s('List), s(Q) :: J))) = doIter(S, E, Q, 1, J) .
+  eq builtin(S, ap(s('Do), E :: ap(s('List), s(Q) :: I :: J))) = doIter(S, E, Q, I, J) .
+  ceq builtin(S0, ap(s('Do), E :: I)) = doN(S0, E, I) if I >= 0 .
+  op doN : St Expr Nat -> R .
+  eq doN(S, E, 0) = r(S, s('Null)) .
+  ceq doN(S0, E, s N) = doN(S1, E, N)
+    if r(S1, V) := ev(S0, E) .
+
+  op tableIter : St Expr Qid Int Int -> R .
+  ceq tableIter(S0, E, Q, I, J)
+    = tableCons(S0, E, Q, I, J) if I <= J .
+  ceq tableIter(S, E, Q, I, J) = r(S, nilA) if I > J .
+  op tableCons : St Expr Qid Int Int -> R .
+  ceq tableCons(S0, E, Q, I, J) = r(S2, V :: AV)
+    if r(S1, V) := ev(S0, sbE(E, bnd(Q, I))) /\
+       r(S2, AV) := tableIter(S1, E, Q, I + 1, J) .
+  ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: J)))
+    = r(S1, ap(s('List), AV))
+    if r(S1, AV) := tableIter(S0, E, Q, 1, J) .
+  ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: I :: J)))
+    = r(S1, ap(s('List), AV))
+    if r(S1, AV) := tableIter(S0, E, Q, I, J) .
+  *** iterator bounds evaluate even though Table holds its arguments
+  op allInt : ArgList -> Bool .
+  eq allInt(nilA) = true .
+  eq allInt(I :: A) = allInt(A) .
+  eq allInt(A) = false [owise] .
+  op tblK : St Expr Qid ArgList ArgList -> R .
+  ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: A))) = tblK(S1, E, Q, A, AV)
+    if not allInt(A) /\ lenA(A) <= 2 /\ r(S1, AV) := evAll(S0, A) .
+  ceq tblK(S, E, Q, A, AV) = r(S, ap(s('Table), E :: ap(s('List), s(Q) :: A)))
+    if AV == A .
+  ceq tblK(S, E, Q, A, AV)
+    = builtin(S, ap(s('Table), E :: ap(s('List), s(Q) :: AV)))
+    if AV =/= A .
+
+  *** multiple iterators nest: Table[e, it1, it2, ...] builds rows of
+  *** Table[e, it2, ...] with it1's variable bound outermost
+  op isIterSpec : Expr -> Bool .
+  eq isIterSpec(ap(s('List), s(Q) :: A)) = true .
+  eq isIterSpec(E) = false [owise] .
+  ceq builtin(S, ap(s('Table), E :: E1 :: E2 :: A))
+    = builtin(S, ap(s('Table), ap(s('Table), E :: E2 :: A) :: E1))
+    if isIterSpec(E1) /\ isIterSpec(E2) .
+
+  *** iteration combinators (args arrive evaluated - no Hold)
+  op foldB : St Expr Expr ArgList -> R .
+  eq foldB(S, H, E, nilA) = r(S, E) .
+  ceq foldB(S0, H, E, E1 :: A) = foldB(S1, H, V, A)
+    if r(S1, V) := ev(S0, ap(H, E :: E1)) .
+  eq builtin(S, ap(s('Fold), H :: E :: ap(E1, A))) = foldB(S, H, E, A) .
+  op nestB : St Expr Expr Nat -> R .
+  eq nestB(S, H, E, 0) = r(S, E) .
+  ceq nestB(S0, H, E, s N) = nestB(S1, H, V, N)
+    if r(S1, V) := ev(S0, ap(H, E)) .
+  ceq builtin(S, ap(s('Nest), H :: E :: I)) = nestB(S, H, E, I) if I >= 0 .
+  op nestL : St Expr Expr Nat -> R .
+  eq nestL(S, H, E, 0) = r(S, E) .
+  ceq nestL(S0, H, E, s N) = r(S2, E :: AV)
+    if r(S1, V) := ev(S0, ap(H, E)) /\
+       r(S2, AV) := nestL(S1, H, V, N) .
+  ceq builtin(S0, ap(s('NestList), H :: E :: I)) = r(S1, ap(s('List), AV))
+    if I >= 0 /\ r(S1, AV) := nestL(S0, H, E, I) .
+
+  op selectB : St Expr ArgList -> R .
+  eq selectB(S, H, nilA) = r(S, nilA) .
+  ceq selectB(S0, H, E :: A) = selCons(S1, V, E, H, A)
+    if r(S1, V) := ev(S0, ap(H, E)) .
+  op selCons : St Expr Expr Expr ArgList -> R .
+  ceq selCons(S0, V, E, H, A)
+    = if V == s('True) then r(S1, E :: AV) else r(S1, AV) fi
+    if r(S1, AV) := selectB(S0, H, A) .
+  ceq builtin(S0, ap(s('Select), ap(E1, A) :: H)) = r(S1, ap(E1, AV))
+    if r(S1, AV) := selectB(S0, H, A) .
+
+  op flatAll : Expr ArgList -> ArgList .
+  eq flatAll(H, nilA) = nilA .
+  eq flatAll(H, ap(H, A) :: A1) = flatAll(H, A) :: flatAll(H, A1) .
+  eq flatAll(H, E :: A1) = E :: flatAll(H, A1) [owise] .
+  eq builtin(S, ap(s('Flatten), ap(H, A))) = r(S, ap(H, flatAll(H, A))) .
+  eq builtin(S, ap(s('Join), ap(H, A) :: ap(H, A1))) = r(S, ap(H, A :: A1)) .
+
+  *** up-values as sugar: the shared rulebase means dispatch-before-
+  *** builtins already gives up-value behavior (1.6 approximation)
+  eq builtin(S, ap(s('TagSetDelayed), s(F) :: L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
+  eq builtin(S, ap(s('UpSetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
+
+  *** indexing and list restructuring
+  ceq builtin(S, ap(s('Part), E :: 0)) = builtin(S, ap(s('Head), E)) if true .
+  ceq builtin(S, ap(s('Part), ap(H, A) :: I)) = r(S, E2)
+    if I > 0 /\ E2 := nthA(A, I) .
+  *** nested Part specs: e[[i, j, ...]] drills in level by level
+  ceq builtin(S, ap(s('Part), ap(H, A) :: I :: A1))
+    = builtin(S, ap(s('Part), E2 :: A1))
+    if lenA(A1) >= 1 /\ I > 0 /\ E2 := nthA(A, I) .
+  eq builtin(S, ap(s('Last), ap(H, A :: E))) = r(S, E) .
+  eq builtin(S, ap(s('Sort), ap(H, A))) = r(S, ap(H, sortA(A))) .
+  op takeA : ArgList Nat -> ArgList .
+  eq takeA(A, 0) = nilA .
+  eq takeA(nilA, N) = nilA .
+  ceq takeA(E :: A, s N) = E :: takeA(A, N) if true .
+  op dropA : ArgList Nat -> ArgList .
+  eq dropA(A, 0) = A .
+  eq dropA(nilA, N) = nilA .
+  ceq dropA(E :: A, s N) = dropA(A, N) if true .
+  *** SlotSequence: ##n becomes Sequence of args n.. and splices in norm
+  ceq slotE(ap(s('SlotSequence), NZ), A) = ap(s('Sequence), dropA(A, N))
+    if s N := NZ .
+
+  op partB : ArgList NzNat -> ArgList .
+  eq partB(nilA, NZ) = nilA .
+  ceq partB(A, NZ) = if lenA(A) >= NZ
+      then ap(s('List), takeA(A, NZ)) :: partB(dropA(A, NZ), NZ)
+      else nilA fi
+    if lenA(A) >= 1 .
+  ceq builtin(S, ap(s('Partition), ap(H, A) :: NZ)) = r(S, ap(H, partB(A, NZ)))
+    if true .
+  op headsA : ArgList -> ArgList .
+  op tailsA : ArgList -> ArgList .
+  eq headsA(nilA) = nilA .
+  eq headsA(ap(H, E :: A) :: A1) = E :: headsA(A1) .
+  eq tailsA(nilA) = nilA .
+  eq tailsA(ap(H, E :: A) :: A1) = ap(H, A) :: tailsA(A1) .
+  op allNonEmpty : ArgList -> Bool .
+  eq allNonEmpty(nilA) = true .
+  eq allNonEmpty(ap(H, E :: A) :: A1) = allNonEmpty(A1) .
+  eq allNonEmpty(A) = false [owise] .
+  op transB : ArgList -> ArgList .
+  eq transB(A) = if allNonEmpty(A)
+    then ap(s('List), headsA(A)) :: transB(tailsA(A))
+    else nilA fi .
+  eq builtin(S, ap(s('Transpose), ap(s('List), A))) = r(S, ap(s('List), transB(A))) .
+
+  *** Association: ordered key -> value container; later bindings win,
+  *** nested Lists/Associations flatten on construction
+  op keyOf : Expr ~> Expr .
+  eq keyOf(ap(s('Rule), E :: V)) = E .
+  eq keyOf(ap(s('RuleDelayed), E :: V)) = E .
+  op hasKey : ArgList Expr -> Bool .
+  eq hasKey(nilA, E) = false .
+  ceq hasKey(E1 :: A, E) = true if keyOf(E1) == E .
+  eq hasKey(E1 :: A, E) = hasKey(A, E) [owise] .
+  op flatRules : ArgList -> ArgList .
+  eq flatRules(nilA) = nilA .
+  eq flatRules(ap(s('List), A) :: A1) = flatRules(A) :: flatRules(A1) .
+  eq flatRules(ap(s('Association), A) :: A1) = flatRules(A) :: flatRules(A1) .
+  eq flatRules(E :: A1) = E :: flatRules(A1) [owise] .
+  op dedupR : ArgList -> ArgList .
+  eq dedupR(nilA) = nilA .
+  eq dedupR(E :: A)
+    = if hasKey(A, keyOf(E)) then dedupR(A) else E :: dedupR(A) fi .
+  eq builtin(S, ap(s('Association), A))
+    = r(S, ap(s('Association), dedupR(flatRules(A)))) .
+  op keysA : ArgList -> ArgList .
+  eq keysA(nilA) = nilA .
+  eq keysA(ap(s('Rule), E :: V) :: A) = E :: keysA(A) .
+  eq keysA(ap(s('RuleDelayed), E :: V) :: A) = E :: keysA(A) .
+  eq keysA(E :: A) = keysA(A) [owise] .
+  op valsA : ArgList -> ArgList .
+  eq valsA(nilA) = nilA .
+  eq valsA(ap(s('Rule), E :: V) :: A) = V :: valsA(A) .
+  eq valsA(ap(s('RuleDelayed), E :: V) :: A) = V :: valsA(A) .
+  eq valsA(E :: A) = valsA(A) [owise] .
+  eq builtin(S, ap(s('Keys), ap(s('Association), A)))
+    = r(S, ap(s('List), keysA(A))) .
+  eq builtin(S, ap(s('Values), ap(s('Association), A)))
+    = r(S, ap(s('List), valsA(A))) .
+  op lookD : ArgList Expr Expr -> Expr .
+  eq lookD(nilA, E, E2) = E2 .
+  eq lookD(ap(s('Rule), E :: V) :: A, E, E2) = V .
+  eq lookD(ap(s('RuleDelayed), E :: V) :: A, E, E2) = V .
+  eq lookD(E1 :: A, E, E2) = lookD(A, E, E2) [owise] .
+  op missingK : Expr -> Expr .
+  eq missingK(E) = ap(s('Missing), str("KeyAbsent") :: E) .
+  eq builtin(S, ap(s('Lookup), ap(s('Association), A) :: E))
+    = ev(S, lookD(A, E, missingK(E))) .
+  ceq builtin(S, ap(s('Lookup), ap(s('Association), A) :: E :: E1))
+    = ev(S, lookD(A, E, E1)) if true .
+  eq builtin(S, ap(ap(s('Association), A), E))
+    = ev(S, lookD(A, E, missingK(E))) .
+  eq builtin(S, ap(s('KeyExistsQ), ap(s('Association), A) :: E))
+    = r(S, bool2wl(hasKey(A, E))) .
+  op dropK : ArgList Expr -> ArgList .
+  eq dropK(nilA, E) = nilA .
+  ceq dropK(E1 :: A, E) = dropK(A, E) if keyOf(E1) == E .
+  eq dropK(E1 :: A, E) = E1 :: dropK(A, E) [owise] .
+  op dropKs : ArgList ArgList -> ArgList .
+  eq dropKs(A, nilA) = A .
+  eq dropKs(A, E :: A1) = dropKs(dropK(A, E), A1) .
+  eq builtin(S, ap(s('KeyDrop), ap(s('Association), A) :: ap(s('List), A1)))
+    = r(S, ap(s('Association), dropKs(A, A1))) .
+  ceq builtin(S, ap(s('KeyDrop), ap(s('Association), A) :: E))
+    = r(S, ap(s('Association), dropK(A, E))) if not isListE(E) .
+  op isListE : Expr -> Bool .
+  eq isListE(ap(s('List), A)) = true .
+  eq isListE(E) = false [owise] .
+  eq builtin(S, ap(s('Normal), ap(s('Association), A))) = r(S, ap(s('List), A)) .
+  eq builtin(S, ap(s('AssociationQ), ap(s('Association), A))) = r(S, s('True)) .
+  ceq builtin(S, ap(s('AssociationQ), E)) = r(S, s('False))
+    if not isAssocE(E) .
+  op isAssocE : Expr -> Bool .
+  eq isAssocE(ap(s('Association), A)) = true .
+  eq isAssocE(E) = false [owise] .
+
+  *** Append / Prepend (any head)
+  eq builtin(S, ap(s('Append), ap(H, A) :: E)) = r(S, ap(H, A :: E)) .
+  eq builtin(S, ap(s('Prepend), ap(H, A) :: E)) = r(S, ap(H, E :: A)) .
+
+  *** Block: dynamic scoping - save own-value definitions of the listed
+  *** symbols, install initializers, run the body, restore
+  op ownDefs : Defs Qid -> Defs .
+  eq ownDefs(noD, Q) = noD .
+  ceq ownDefs(d('s[C], Rh) | Ds, Q) = d('s[C], Rh) | ownDefs(Ds, Q)
+    if C == symConst(Q) .
+  eq ownDefs(Dd | Ds, Q) = ownDefs(Ds, Q) [owise] .
+  op clearOwn : Defs Qid -> Defs .
+  eq clearOwn(noD, Q) = noD .
+  ceq clearOwn(d('s[C], Rh) | Ds, Q) = clearOwn(Ds, Q) if C == symConst(Q) .
+  eq clearOwn(Dd | Ds, Q) = Dd | clearOwn(Ds, Q) [owise] .
+  op blockName : Expr -> Qid .
+  eq blockName(s(Q)) = Q .
+  eq blockName(ap(s('Set), s(Q) :: Ini)) = Q .
+  op savedOf : Defs ArgList -> Defs .
+  eq savedOf(Ds, nilA) = noD .
+  eq savedOf(Ds, E :: A) = catD(ownDefs(Ds, blockName(E)), savedOf(Ds, A)) .
+  op catD : Defs Defs -> Defs .
+  eq catD(noD, Ds) = Ds .
+  eq catD(Dd | Ds, Ds0) = Dd | catD(Ds, Ds0) .
+  op clearAllOwn : Defs ArgList -> Defs .
+  eq clearAllOwn(Ds, nilA) = Ds .
+  eq clearAllOwn(Ds, E :: A) = clearAllOwn(clearOwn(Ds, blockName(E)), A) .
+  op blockInits : ArgList -> ArgList .
+  eq blockInits(nilA) = nilA .
+  eq blockInits(s(Q) :: A) = blockInits(A) .
+  eq blockInits(ap(s('Set), s(Q) :: Ini) :: A)
+    = ap(s('Set), s(Q) :: Ini) :: blockInits(A) .
+  op restoreD : Defs Defs -> Defs .
+  eq restoreD(Ds, noD) = Ds .
+  eq restoreD(Ds, Dd | Ds0) = restoreD(insDef(Ds, Dd), Ds0) .
+  ceq builtin(st(Ds, At, s N), ap(s('Block), ap(s('List), A1) :: Body))
+    = r(st(restoreD(clearAllOwn(Ds2, A1), savedOf(Ds, A1)), At2, N2), V)
+    if r(st(Ds2, At2, N2), V) :=
+         evSeq(st(clearAllOwn(Ds, A1), At, N), blockInits(A1) :: Body, s('Null)) .
+
+  *** Which / Switch / For
+  op whichB : St ArgList -> R .
+  eq whichB(S, nilA) = r(S, s('Null)) .
+  ceq whichB(S0, Cnd :: E :: A)
+    = if V == s('True) then ev(S1, E) else whichB(S1, A) fi
+    if r(S1, V) := ev(S0, Cnd) .
+  eq builtin(S, ap(s('Which), A)) = whichB(S, A) .
+
+  op switchB : St Expr ArgList -> R .
+  eq switchB(S, E, nilA) = r(S, s('Null)) .
+  eq switchB(S, E, L :: V :: A)
+    = if matchesQ(E, L) then ev(S, V) else switchB(S, E, A) fi .
+  eq builtin(S, ap(s('Switch), E :: A)) = switchB(S, E, A) .
+
+  op forB : St Expr Expr Expr -> R .
+  op forStep : St Expr Expr Expr -> R .
+  ceq forB(S0, Cnd, Inc, Body)
+    = if V == s('True) then forStep(S1, Cnd, Inc, Body) else r(S1, s('Null)) fi
+    if r(S1, V) := ev(S0, Cnd) .
+  eq forStep(st(Ds, At, 0), Cnd, Inc, Body) = r(st(Ds, At, 0), s('$Aborted)) .
+  ceq forStep(st(Ds, At, s N), Cnd, Inc, Body) = forB(S2, Cnd, Inc, Body)
+    if r(S1, V) := ev(st(Ds, At, N), Body) /\ r(S2, V2) := ev(S1, Inc) .
+  ceq builtin(S0, ap(s('For), Ini :: Cnd :: Inc :: Body)) = forB(S1, Cnd, Inc, Body)
+    if r(S1, V) := ev(S0, Ini) .
+
+  *** With: definition-time substitution; Module: rename to fresh
+  *** symbols suffixed with the (unique, self-decremented) fuel value
+  sort WR .
+  op wres : St Bnds -> WR [ctor] .
+  op wb : St ArgList -> WR .
+  eq wb(S, nilA) = wres(S, noBnds) .
+  ceq wb(S0, ap(s('Set), s(Q) :: Ini) :: A) = wres(S2, bnd(Q, V) & B)
+    if r(S1, V) := ev(S0, Ini) /\ wres(S2, B) := wb(S1, A) .
+  ceq builtin(S0, ap(s('With), ap(s('List), A1) :: Body)) = ev(S1, sbE(Body, B))
+    if wres(S1, B) := wb(S0, A1) .
+
+  op mv : Qid Nat -> Qid .
+  eq mv(Q, N) = qid(string(Q) + "$" + string(N, 10)) .
+  op modBnds : ArgList Nat -> Bnds .
+  eq modBnds(nilA, N) = noBnds .
+  eq modBnds(s(Q) :: A, N) = bnd(Q, s(mv(Q, N))) & modBnds(A, N) .
+  eq modBnds(ap(s('Set), s(Q) :: Ini) :: A, N) = bnd(Q, s(mv(Q, N))) & modBnds(A, N) .
+  op modInits : ArgList Nat -> ArgList .
+  eq modInits(nilA, N) = nilA .
+  eq modInits(s(Q) :: A, N) = modInits(A, N) .
+  eq modInits(ap(s('Set), s(Q) :: Ini) :: A, N)
+    = ap(s('Set), s(mv(Q, N)) :: Ini) :: modInits(A, N) .
+  ceq builtin(st(Ds, At, s N), ap(s('Module), ap(s('List), A1) :: Body))
+    = evSeq(st(Ds, At, N), modInits(A1, N) :: sbE(Body, modBnds(A1, N)), s('Null))
+    if true .
+
+  *** Unset / Clear
+  op unsetDef : St Expr -> St .
+  ceq unsetDef(st(Ds, At, N), L) = st(delDef(Ds, P, nilA), At, N)
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) /\ P := compileP(L2) .
+  eq builtin(S, ap(s('Unset), L)) = r(unsetDef(S, L), s('Null)) .
+
+  op symConst : Qid -> Constant .
+  eq symConst(Q) = qid("'" + string(Q) + ".Qid") .
+  op clearSym : Defs Qid -> Defs .
+  eq clearSym(noD, Q) = noD .
+  ceq clearSym(d('ap['s[C], NeTL], Rh) | Ds, Q) = clearSym(Ds, Q)
+    if C == symConst(Q) .
+  ceq clearSym(d('s[C], Rh) | Ds, Q) = clearSym(Ds, Q)
+    if C == symConst(Q) .
+  eq clearSym(Dd | Ds, Q) = Dd | clearSym(Ds, Q) [owise] .
+  op clearP : Defs Attrs Qid -> Defs .
+  eq clearP(Ds, At, Q)
+    = if hasAttr(At, Q, 'Protected) then Ds else clearSym(Ds, Q) fi .
+  eq builtin(st(Ds, At, N), ap(s('Clear), s(Q)))
+    = r(st(clearP(Ds, At, Q), At, N), s('Null)) .
+  ceq builtin(st(Ds, At, N), ap(s('Clear), s(Q) :: A))
+    = builtin(st(clearP(Ds, At, Q), At, N), ap(s('Clear), A)) if lenA(A) >= 1 .
+
+  *** ClearAll also drops attributes - unless Protected
+  op delAllAt : Attrs Qid -> Attrs .
+  eq delAllAt(at(F, AT) && At, F) = delAllAt(At, F) .
+  eq delAllAt(At, F) = At [owise] .
+  ceq builtin(st(Ds, At, N), ap(s('ClearAll), s(Q)))
+    = r(st(clearSym(Ds, Q), delAllAt(At, Q), N), s('Null))
+    if not hasAttr(At, Q, 'Protected) .
+  ceq builtin(st(Ds, At, N), ap(s('ClearAll), s(Q)))
+    = r(st(Ds, At, N), s('$Failed))
+    if hasAttr(At, Q, 'Protected) .
+
+  *** FoldList / FixedPoint
+  op foldLB : St Expr Expr ArgList -> R .
+  eq foldLB(S, H, E, nilA) = r(S, E) .
+  ceq foldLB(S0, H, E, E1 :: A) = r(S2, E :: AV)
+    if r(S1, V) := ev(S0, ap(H, E :: E1)) /\ r(S2, AV) := foldLB(S1, H, V, A) .
+  ceq builtin(S0, ap(s('FoldList), H :: E :: ap(E1, A))) = r(S1, ap(s('List), AV))
+    if r(S1, AV) := foldLB(S0, H, E, A) .
+  op fixB : St Expr Expr Nat -> R .
+  eq fixB(S, H, E, 0) = r(S, E) .
+  ceq fixB(S0, H, E, s N)
+    = if V == E then r(S1, E) else fixB(S1, H, V, N) fi
+    if r(S1, V) := ev(S0, ap(H, E)) .
+  eq builtin(S, ap(s('FixedPoint), H :: E)) = fixB(S, H, E, 10000) .
+
+  *** non-local exits; every Throw carries value + tag as a $TT pair,
+  *** with None standing in for "no tag" - as in WL, `_` matches it
+  eq builtin(S, ap(s('Return), nilA)) = r(S, unw('Return, s('Null))) .
+  eq builtin(S, ap(s('Return), E)) = r(S, unw('Return, E)) .
+  eq builtin(S, ap(s('Break), nilA)) = r(S, unw('Break, s('Null))) .
+  eq builtin(S, ap(s('Continue), nilA)) = r(S, unw('Continue, s('Null))) .
+  eq builtin(S, ap(s('Throw), E)) = r(S, unw('Throw, ap(s('$TT), E :: s('None)))) .
+  ceq builtin(S, ap(s('Throw), E :: V)) = r(S, unw('Throw, ap(s('$TT), E :: V)))
+    if true .
+  op catchB : St ArgList -> R .
+  eq catchB(S, unw('Throw, ap(s('$TT), E :: s('None)))) = r(S, E) .
+  eq catchB(S, A) = r(S, A) [owise] .
+  ceq builtin(S0, ap(s('Catch), E)) = catchB(S1, V)
+    if r(S1, V) := ev(S0, E) .
+  *** Catch[expr, form] catches throws whose tag matches form
+  op catchT : St ArgList Expr -> R .
+  eq catchT(S, unw('Throw, ap(s('$TT), E :: V)), L)
+    = if matchesQ(V, L) then r(S, E)
+      else r(S, unw('Throw, ap(s('$TT), E :: V))) fi .
+  eq catchT(S, A, L) = r(S, A) [owise] .
+  ceq builtin(S0, ap(s('Catch), E :: L)) = catchT(S1, V, L)
+    if r(S1, V) := ev(S0, E) .
+
+  *** everyday numerics and strings
+  eq builtin(S, ap(s('Unequal), RA :: RB)) = r(S, bool2wl(RA =/= RB)) .
+  ceq builtin(S, ap(s('Unequal), E :: E1)) = r(S, s('False)) if E == E1 .
+  eq builtin(S, ap(s('SameQ), E :: E1)) = r(S, bool2wl(E == E1)) .
+  eq builtin(S, ap(s('Mod), I :: J)) = r(S, ((I rem J) + J) rem J) .
+  eq builtin(S, ap(s('Quotient), I :: J))
+    = r(S, (I + -(((I rem J) + J) rem J)) quo J) .
+  eq builtin(S, ap(s('GCD), I :: J)) = r(S, gcd(I, J)) .
+  op factN : Nat -> NzNat .
+  eq factN(0) = 1 .
+  ceq factN(s N) = (s N) * factN(N) if true .
+  ceq builtin(S, ap(s('Factorial), N)) = r(S, factN(N)) if true .
+  ceq builtin(S, ap(s('Binomial), N :: N2))
+    = r(S, factN(N) quo (factN(N2) * factN(sd(N, N2)))) if N2 <= N .
+  eq builtin(S, ap(s('Abs), RA)) = r(S, abs(RA)) .
+  op allRat : ArgList -> Bool .
+  eq allRat(nilA) = true .
+  eq allRat(RA :: A) = allRat(A) .
+  eq allRat(A) = false [owise] .
+  op minA : ArgList -> Rat .
+  eq minA(RA) = RA .
+  eq minA(RA :: RB :: A) = minA(min(RA, RB) :: A) .
+  op maxA : ArgList -> Rat .
+  eq maxA(RA) = RA .
+  eq maxA(RA :: RB :: A) = maxA(max(RA, RB) :: A) .
+  ceq builtin(S, ap(s('Min), A)) = r(S, minA(A)) if allRat(A) /\ lenA(A) >= 1 .
+  ceq builtin(S, ap(s('Max), A)) = r(S, maxA(A)) if allRat(A) /\ lenA(A) >= 1 .
+  op joinStr : ArgList ~> String .
+  eq joinStr(nilA) = "" .
+  eq joinStr(str(Str) :: A) = Str + joinStr(A) .
+  ceq builtin(S, ap(s('StringJoin), A)) = r(S, str(Str))
+    if Str := joinStr(A) .
+  eq builtin(S, ap(s('StringLength), str(Str))) = r(S, length(Str)) .
+  eq builtin(S, ap(s('ToString), I)) = r(S, str(string(I, 10))) .
+  eq builtin(S, ap(s('ToString), str(Str))) = r(S, str(Str)) .
+  eq builtin(S, ap(s('ToString), s(Q))) = r(S, str(string(Q))) .
+  op charsA : String -> ArgList .
+  ceq charsA(Str) = str(substr(Str, 0, 1)) :: charsA(substr(Str, 1, length(Str)))
+    if length(Str) > 0 .
+  eq charsA(Str) = nilA [owise] .
+  eq builtin(S, ap(s('Characters), str(Str))) = r(S, ap(s('List), charsA(Str))) .
+  ceq builtin(S, ap(s('StringTake), str(Str) :: I)) = r(S, str(substr(Str, 0, I)))
+    if I >= 0 .
+  ceq builtin(S, ap(s('StringTake), str(Str) :: I))
+    = r(S, str(substr(Str, N, length(Str))))
+    if I < 0 /\ N := length(Str) + I .
+  ceq builtin(S, ap(s('StringTake), str(Str) :: ap(s('List), I :: J)))
+    = r(S, str(substr(Str, N, N2)))
+    if N := I + -(1) /\ N2 := (J + 1) + -(I) .
+  ceq builtin(S, ap(s('StringDrop), str(Str) :: I))
+    = r(S, str(substr(Str, I, length(Str)))) if I >= 0 .
+  ceq builtin(S, ap(s('StringDrop), str(Str) :: I)) = r(S, str(substr(Str, 0, N)))
+    if I < 0 /\ N := length(Str) + I .
+
+  *** anything else is inert
+  eq builtin(S, E) = r(S, E) [owise] .
+
+  *** ---------------------------------------------------- driver
+  op initialFuel : -> Nat .
+  eq initialFuel = 1000000 .
+  op initialState : -> St .
+  eq initialState = st(noD, defaultAttrs, initialFuel) .
+
+  op unwrapTop : ArgList -> ArgList .
+  eq unwrapTop(unw('Throw, ap(s('$TT), E :: V))) = E .
+  ceq unwrapTop(unw(Q, E)) = E if Q =/= 'Throw .
+  eq unwrapTop(A) = A [owise] .
+  op run : ArgList -> Expr .
+  ceq run(A) = unwrapTop(V) if r(S, V) := evSeq(initialState, A, s('Null)) .
+
+  op runAll : ArgList -> ArgList .
+  eq runAll(A) = runAll2(initialState, A) .
+  op runAll2 : St ArgList -> ArgList .
+  eq runAll2(S, nilA) = nilA .
+  ceq runAll2(S0, E :: A) = V :: runAll2(S1, A)
+    if r(S1, V) := ev(S0, E) .
+
+  *** session driver: runPrefix memoizes the state after every prefix
+  *** of the accumulated program, so in a persistent interpreter each
+  *** runCell only evaluates the expressions added since the last call
+  op getSt : R -> St .
+  eq getSt(r(S, A)) = S .
+  op getV : R -> ArgList .
+  eq getV(r(S, A)) = unwrapTop(A) .
+  op runStep : ArgList -> R [memo] .
+  ceq runStep(A :: E) = ev(runPrefix(A), E) if true .
+  op runPrefix : ArgList -> St .
+  eq runPrefix(nilA) = initialState .
+  eq runPrefix(A :: E) = getSt(runStep(A :: E)) .
+  op runCell : ArgList -> ArgList .
+  eq runCell(A :: E) = getV(runStep(A :: E)) .
+  op primed : St -> Bool .
+  eq primed(S) = true .
+endfm

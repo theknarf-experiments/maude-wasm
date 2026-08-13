@@ -1,0 +1,35 @@
+import { WlSnippet } from "../Snippet";
+
+export const title = "Building a language on Maude";
+
+Everything in this tutorial so far used Maude directly. This chapter turns the tables: it shows a whole *other* language — a working core of the Wolfram Language — implemented **on top of** Maude, running in your browser right now. The cells below are live; the notation is Wolfram, the engine is a Maude functional module.
+
+The idea: Wolfram expressions become terms of one sort `Expr`, and the global rule base (everything you define with `:=`) is *ordinary data* threaded through an evaluator function. Pattern matching — the heart of the language — is not reimplemented: Wolfram blanks compile to Maude meta-variables, and `metaMatch` lets Maude's own matcher do the work. Sequence blanks (`x__`) become variables of an associative list sort, so sequence semantics come from Maude's associative matching for free.
+
+<WlSnippet code={`fib[0] = 0; fib[1] = 1;
+fib[n_] := fib[n] = fib[n - 1] + fib[n - 2];
+fib[30]`} />
+
+That `fib[n] = fib[n - 1] + ...` idiom is memoization by self-definition: evaluating `fib[5]` *adds a new rule* `fib[5] = 5` to the state. Definitions dispatch by specificity (more specific patterns win), which is why `fib[0]` and `fib[1]` are tried before the general rule.
+
+The pattern language runs deep — typed and sequence blanks, defaults, alternatives, conditions:
+
+<WlSnippet code={`f[x__Integer] := Plus[x];
+f[x_, y_ : 10] := {x, y};
+{f[1, 2, 3], f[7], MatchQ[4, n_ /; n > 3]}`} />
+
+Rules-as-values work too, including conditions inside `/.` replacement rules:
+
+<WlSnippet code={`{1, 5, 2, 8} /. n_ /; n > 3 -> big`} />
+
+The showcase is symbolic calculus, and here is the trick worth stealing: `D`, `Integrate`, `Expand`, `Together` and friends are **not builtins**. They are written in the Wolfram language itself and loaded as a bootstrap library when the session starts — the library dog-foods the language it extends.
+
+<WlSnippet code={`{D[Sin[x^2], x],
+ Integrate[(2*x + 5)^3, x],
+ Together[1/x + 1/y]}`} />
+
+Because the whole thing is one Maude term rewriting system, correctness checks compose beautifully — differentiating an antiderivative must reproduce the integrand:
+
+<WlSnippet code={`Expand[Together[D[Integrate[x/(x + 1), x], x] - x/(x + 1)]]`} />
+
+The full write-up — architecture, the metaMatch dispatch idiom, the hard-won Maude lessons, and the remaining roadmap — lives in [docs/wolfram-on-maude.md](https://github.com/theknarf-experiments/maude-wasm/blob/main/docs/wolfram-on-maude.md). For a free-form playground, the [notebook page](/wolfram) evaluates cells with shared definitions.

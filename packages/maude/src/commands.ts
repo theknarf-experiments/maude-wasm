@@ -162,7 +162,16 @@ export class MaudeCommandError extends Error {
 // command around the target command and use its (deterministic,
 // single-line) output as a marker.
 const SENTINEL = 424243;
-export const SENTINEL_COMMAND = `parse in NAT : ${SENTINEL} .`;
+/**
+ * Sentinel command scoped to a module. Maude clears a module's memo
+ * tables whenever a command runs in a *different* module, so sessions
+ * that rely on `[memo]` operators must keep the sentinel in their
+ * working module (it needs NAT imported so the number parses).
+ */
+export function sentinelCommand(module: string): string {
+  return `parse in ${module} : ${SENTINEL} .`;
+}
+export const SENTINEL_COMMAND = sentinelCommand("NAT");
 export const SENTINEL_OUTPUT = `NzNat: ${SENTINEL}`;
 
 /**

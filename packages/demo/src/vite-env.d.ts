@@ -12,3 +12,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare module "@maude-wasm/wolfram-core/wl.maude?raw" {
+  const source: string;
+  export default source;
+}

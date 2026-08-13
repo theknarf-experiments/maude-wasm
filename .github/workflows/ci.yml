@@ -14,9 +14,9 @@ jobs:
         with:
           install_args: node pnpm
       - run: pnpm install --frozen-lockfile
-      # The demo resolves maude-wasm's types from its dist/, so build the
-      # (pure-tsc) wrapper first.
-      - run: pnpm --filter maude-wasm build
+      # The demo resolves maude-wasm's and @maude-wasm/wolfram's types
+      # from their dist/, so build the (pure-tsc) packages first.
+      - run: pnpm --filter maude-wasm --filter @maude-wasm/wolfram build
       - run: pnpm lint
       - run: pnpm knip
       - run: pnpm typecheck

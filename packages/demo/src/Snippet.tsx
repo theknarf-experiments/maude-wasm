@@ -13,6 +13,7 @@ import {
 import { maudeLanguage } from "./maude-language";
 import type { Op } from "./protocol";
 import { CancelledError, type useMaude } from "./useMaude";
+import { wlLanguage } from "./wl-language";
 
 const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
@@ -100,6 +101,77 @@ export function Snippet({ code }: { code: string }) {
 
 function stripBye(stdout: string): string {
   return stdout.replace(/\nBye\.\s*$/, "").replace(/^Bye\.\s*$/, "");
+}
+
+/** An editable Wolfram-notation cell evaluated by the WL/M engine. */
+export function WlSnippet({ code }: { code: string }) {
+  const maude = useRunner();
+  const [value, setValue] = useState(code);
+  const [output, setOutput] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  const run = useCallback(async () => {
+    try {
+      setError(null);
+      const res = await maude.call<{ output: string }>({
+        kind: "wolfram",
+        source: valueRef.current,
+      });
+      setOutput(res.output);
+    } catch (err) {
+      if (err instanceof CancelledError) return;
+      setOutput(null);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [maude]);
+
+  const runKeymap = Prec.highest(
+    keymap.of([
+      {
+        key: "Mod-Enter",
+        run: () => {
+          void run();
+          return true;
+        },
+      },
+    ]),
+  );
+
+  return (
+    <div className="snippet">
+      <CodeMirror
+        className="editor snippet-editor"
+        value={value}
+        onChange={setValue}
+        extensions={[wlLanguage, runKeymap]}
+        theme={prefersDark ? "dark" : "light"}
+        basicSetup={{ foldGutter: false, lineNumbers: true }}
+      />
+      <div className="snippet-bar">
+        <button type="button" onClick={run} disabled={maude.running}>
+          {maude.running ? "Running…" : "Run ▶"}
+        </button>
+        {maude.running && (
+          <button type="button" className="cancel" onClick={maude.cancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {output !== null && (
+        <div className="snippet-output">
+          <pre>{output}</pre>
+        </div>
+      )}
+      {error !== null && (
+        <div className="snippet-output">
+          <pre className="stderr">{error}</pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** A read-only, syntax-highlighted TypeScript listing. */

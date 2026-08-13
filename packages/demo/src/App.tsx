@@ -24,6 +24,7 @@ import { examples } from "./examples";
 import { maudeLanguage } from "./maude-language";
 import { MaudeContext, type Runner, Snippet, TsListing } from "./Snippet";
 import { CancelledError, useMaude } from "./useMaude";
+import { WolframNotebook } from "./WolframNotebook";
 
 const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
@@ -74,6 +75,9 @@ export default function App() {
             <NavLink to="/playground" className="playground-link">
               <span className="chapter-no" /> Playground
             </NavLink>
+            <NavLink to="/wolfram">
+              <span className="chapter-no" /> Wolfram notebook
+            </NavLink>
           </nav>
           {/* Set at build time (e.g. by the Pages workflow), so the deployed
             site links back to its source. Absent locally. */}
@@ -95,6 +99,10 @@ export default function App() {
           <Routes>
             <Route path="/" element={<ChapterPage index={0} />} />
             <Route path="/playground" element={<Playground maude={maude} />} />
+            <Route
+              path="/wolfram"
+              element={<WolframNotebook maude={maude} />}
+            />
             <Route path="/:id" element={<ChapterRoute />} />
           </Routes>
         </main>
