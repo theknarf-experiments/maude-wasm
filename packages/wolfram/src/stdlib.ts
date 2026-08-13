@@ -126,6 +126,20 @@ Re[Complex[a_, b_]] := a; Re[x_?NumberQ] := x;
 Im[Complex[a_, b_]] := b; Im[x_?NumberQ] := 0;
 Conjugate[Complex[a_, b_]] := Complex[a, -b]; Conjugate[x_?NumberQ] := x;
 
+(* messages as state: raised message names accumulate in $MessageList;
+   Quiet scopes it, Check watches it *)
+$MessageList = {};
+SetAttributes[Message, HoldFirst];
+Message[name_, args___] :=
+  ($MessageList = Append[$MessageList, HoldForm[name]]; Null);
+SetAttributes[Quiet, HoldAll];
+Quiet[e_] :=
+  Module[{saved, r}, saved = $MessageList; r = e; $MessageList = saved; r];
+SetAttributes[Check, HoldAll];
+Check[e_, f_] :=
+  Module[{n, r}, n = Length[$MessageList]; r = e;
+    If[Length[$MessageList] > n, f, r]];
+
 (* in-place update sugar over own-values *)
 SetAttributes[AppendTo, HoldFirst];
 AppendTo[s_, e_] := s = Append[s, e];

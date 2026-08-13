@@ -33,6 +33,7 @@ const OPS = [
   "|>",
   "^:=",
   "//.",
+  "::",
   "===",
   "/;",
   ":=",
@@ -63,6 +64,7 @@ const OPS = [
   ":",
   "!",
   "?",
+  "%",
   "(",
   ")",
   "[",
@@ -217,6 +219,7 @@ const INFIX: Record<string, [number, number, string]> = {
   "^": [101, 100, "Power"],
   "@": [96, 95, "$Prefix"],
   "?": [120, 121, "PatternTest"],
+  "::": [130, 131, "MessageName"],
 };
 
 class Parser {
@@ -328,6 +331,9 @@ class Parser {
         depth: t.depth ?? 1,
       };
     }
+    if (t.type === "op" && t.text === "%") {
+      return { kind: "apply", head: sym("Out"), args: [] };
+    }
     if (t.type === "op" && t.text === "(") {
       const e = this.parseExpr(0);
       this.expect(")");
@@ -371,6 +377,16 @@ function int(value: string): Ast {
 
 function mkInfix(op: string, lhs: Ast, rhs: Ast): Ast {
   switch (op) {
+    // f::tag - the tag reads as a symbol but is stored as a string
+    case "MessageName":
+      return {
+        kind: "apply",
+        head: sym("MessageName"),
+        args: [
+          lhs,
+          rhs.kind === "symbol" ? { kind: "string", value: rhs.name } : rhs,
+        ],
+      };
     // `x_ : d` is Optional-with-default; `x : patt` is Pattern naming
     case "Pattern":
       if (lhs.kind === "blank") {

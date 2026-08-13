@@ -1,25 +1,17 @@
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { runMaude } from "maude-wasm";
 import { formatCore } from "./format.js";
 import { compileProgram } from "./parser.js";
 import { stdlib } from "./stdlib.js";
+import { wlSource } from "./wl-source.js";
 
 export { formatCore } from "./format.js";
 export { type Ast, compileProgram, parse, toCore, tokenize } from "./parser.js";
+export {
+  type WolframCell,
+  WolframSession,
+  type WolframSessionOptions,
+} from "./session.js";
 export { stdlib } from "./stdlib.js";
-
-let cachedSource: string | null = null;
-function wlSource(): string {
-  if (cachedSource === null) {
-    const require = createRequire(import.meta.url);
-    cachedSource = readFileSync(
-      require.resolve("@maude-wasm/wolfram-core/wl.maude"),
-      "utf8",
-    );
-  }
-  return cachedSource;
-}
 
 export interface WlResult {
   /** The result formatted as Wolfram InputForm. */

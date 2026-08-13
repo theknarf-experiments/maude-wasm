@@ -1746,4 +1746,21 @@ fmod WL-EVAL is
   eq runAll2(S, nilA) = nilA .
   ceq runAll2(S0, E :: A) = V :: runAll2(S1, A)
     if r(S1, V) := ev(S0, E) .
+
+  *** session driver: runPrefix memoizes the state after every prefix
+  *** of the accumulated program, so in a persistent interpreter each
+  *** runCell only evaluates the expressions added since the last call
+  op getSt : R -> St .
+  eq getSt(r(S, A)) = S .
+  op getV : R -> ArgList .
+  eq getV(r(S, A)) = unwrapTop(A) .
+  op runStep : ArgList -> R [memo] .
+  ceq runStep(A :: E) = ev(runPrefix(A), E) if true .
+  op runPrefix : ArgList -> St .
+  eq runPrefix(nilA) = initialState .
+  eq runPrefix(A :: E) = getSt(runStep(A :: E)) .
+  op runCell : ArgList -> ArgList .
+  eq runCell(A :: E) = getV(runStep(A :: E)) .
+  op primed : St -> Bool .
+  eq primed(S) = true .
 endfm

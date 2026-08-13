@@ -275,9 +275,13 @@ conformance table in `test/wl.test.ts` covers each item below.
       with `$Failed` on protected symbols; `Protect`/`Unprotect` live
       in the stdlib. Builtins ship unprotected on purpose: the stdlib
       itself extends `Sin`, `Integrate` &c. *Pending:* contexts.
-- [ ] **3.6 Messages**: `Message`, `Quiet`, `Check`, message name
-      resolution — plumb through the evaluator as effects in the state
-      term.
+- [x] **3.6 Messages** — written in the stdlib over the state the
+      evaluator already threads: raised messages accumulate as
+      `HoldForm[MessageName[...]]` in the `$MessageList` own-value;
+      `Quiet` saves/restores it around its body, `Check` compares its
+      length. The parser gained `f::tag` (`MessageName`, tag stored as
+      a string). Divergence: nothing prints — messages are data, not
+      console output.
 
 ## Phase 4 — Numerics & data types
 
@@ -384,20 +388,28 @@ conformance table in `test/wl.test.ts` covers each item below.
       tokenizer + Pratt parser covering numbers, strings, symbols,
       blanks (`x_`, `x__`, `x___`, `_Integer`, `x__Integer`…), slots/`&`,
       `{...}`/`f[...]`, `e[[...]]` Part syntax, `x_ : d` Optional,
+      `<|...|>` associations, real literals, `f::tag`, `%`,
       and the operator table (`; = := ^:= // /. //. -> :> /; : | || &&
       == != < > <= >= /@ @@ + - * / ^ @ !`), with `a/b` and `a-b`
       compiling through `Times`/`Power`/`Plus`, plus `x_?test` and
-      `##`/`##n`. *Divergences:* no implicit multiplication, no `%`.
+      `##`/`##n`. *Divergences:* no implicit multiplication.
       *Also done:* format→parse round-trip property test over the whole
       e2e corpus (caught a real divergence: `a - b*c` must fold the -1
       into the Times, as WL does).
 - [x] **6.2 Formatter**: core result terms print as InputForm with
       precedence-aware parenthesization (`3*(1 + x)`), lists as
       `{...}`, slots/`&`, blanks, strings.
-- [~] **6.3 Session API.** *Done:* one-shot `evaluateWL(source)` →
+- [x] **6.3 Session API.** *Done:* one-shot `evaluateWL(source)` →
       `{output, core, stderr}` through parser → engine → formatter.
-      *Pending:* persistent `WolframSession` on `MaudeWorkerSession`,
-      In/Out history.
+      *Also done:* persistent `WolframSession` on `MaudeWorkerSession`
+      with In/Out history, `Out[n]` recorded in the session state and
+      `%` for the previous result. Incrementality comes from a
+      memoized `runStep` prefix chain *inside the interpreter*: each
+      cell only evaluates the newly appended expressions (≈10ms/cell
+      after a 1s cell, vs. full replay). Hard-won lesson: Maude wipes
+      a module's memo tables whenever a command runs in a *different*
+      module — the session's output-delimiter sentinel had to move
+      into WL-EVAL (`sentinelModule` option on `MaudeWorkerSession`).
 - [x] **6.4 Notebook page in the demo** (`/wolfram`): cell-based UI
       with In/Out labels, Shift-Enter evaluation, add-cell, cancel; a
       minimal WL CodeMirror mode; parsing/formatting run in the worker
@@ -405,8 +417,11 @@ conformance table in `test/wl.test.ts` covers each item below.
       share a session by replaying the cells above the evaluated one —
       GitHub Pages lacks the cross-origin-isolation headers a
       persistent MaudeWorkerSession would need.
-- [ ] **6.5 Tutorial chapter** ("Building a language on Maude") telling
-      the story with live cells.
+- [x] **6.5 Tutorial chapter** — chapter 18, "Building a language on
+      Maude": the architecture story (expressions as terms, rulebase as
+      data, metaMatch dispatch, the stdlib dog-fooding the language)
+      told with live `WlSnippet` cells, ending on the self-checking
+      `D`∘`Integrate` identity.
 
 ## Phase 7 — Performance & robustness
 

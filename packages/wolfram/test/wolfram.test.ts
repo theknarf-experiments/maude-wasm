@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCore } from "../src/format.js";
-import { compileProgram, evaluateWL } from "../src/index.js";
+import { compileProgram, evaluateWL, WolframSession } from "../src/index.js";
 import { parse, toCore } from "../src/parser.js";
 
 describe("parser", () => {
@@ -193,6 +193,11 @@ const cases: Array<[string, string]> = [
   ],
   // Append/Prepend and mutation sugar
   ["l = {1}; AppendTo[l, 2]; PrependTo[l, 0]; l", "{0, 1, 2}"],
+  // messages as state
+  ["Message[f::bad]; $MessageList", '{HoldForm[MessageName[f, "bad"]]}'],
+  ["Quiet[(Message[f::bad]; 7)]; Length[$MessageList]", "0"],
+  ["Check[(Message[f::bad]; 1), fallback]", "fallback"],
+  ["Check[1 + 1, fallback]", "2"],
   // complex numbers
   ["I^2", "-1"],
   ["(1 + 2*I) * (3 - I)", "Complex[5, 5]"],
@@ -233,6 +238,38 @@ const integrands = [
   "x/(x + 1)",
   "x/(2*x + 1)",
 ];
+
+describe("WolframSession", () => {
+  it("persists definitions with In/Out history", async () => {
+    const s = await WolframSession.create();
+    try {
+      expect((await s.evaluate("f[x_] := x^2")).output).toBe("Null");
+      expect((await s.evaluate("f[12]")).output).toBe("144");
+      expect((await s.evaluate("% + 1")).output).toBe("145");
+      expect((await s.evaluate("Out[2] * 2")).output).toBe("288");
+      expect(s.history).toHaveLength(4);
+      expect(s.history[1]).toMatchObject({ input: "f[12]", output: "144" });
+    } finally {
+      s.close();
+    }
+  });
+
+  it("evaluates incrementally via the prefix memo", async () => {
+    const s = await WolframSession.create();
+    try {
+      await s.evaluate(
+        "fib[0] = 0; fib[1] = 1; fib[n_] := fib[n] = fib[n - 1] + fib[n - 2]; fib[25]",
+      );
+      const t = Date.now();
+      expect((await s.evaluate("1 + 1")).output).toBe("2");
+      // A replaying session would redo the fib cell (~1s); the memoized
+      // prefix makes follow-up cells near-instant.
+      expect(Date.now() - t).toBeLessThan(500);
+    } finally {
+      s.close();
+    }
+  });
+});
 
 describe("integration corpus: D[Integrate[f, x], x] == f", () => {
   it.each(integrands.map((f) => [f] as [string]))("%s", async (f) => {
