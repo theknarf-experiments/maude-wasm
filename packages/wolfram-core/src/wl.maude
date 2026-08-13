@@ -18,12 +18,12 @@
 ***   compiled pattern, descending; ties keep definition order.
 
 fmod WL-SYNTAX is
-  protecting INT .
+  protecting RAT .
   protecting STRING .
   protecting QID .
   sorts Expr ArgList .
   subsort Expr < ArgList .
-  subsort Int < Expr .
+  subsort Rat < Expr .
   op s : Qid -> Expr [ctor] .              *** symbol
   op str : String -> Expr [ctor] .         *** string atom
   op ap : Expr ArgList -> Expr [ctor] .    *** application h[args]
@@ -66,11 +66,11 @@ endfm
 *** total order on expressions for Orderless canonicalization
 fmod WL-ORDER is
   protecting WL-BINDINGS .
-  var I J : Int . var Q Q2 : Qid . var Str Str2 : String .
+  var RA RB : Rat . var Q Q2 : Qid . var Str Str2 : String .
   var E E2 H H2 : Expr . var A A2 : ArgList .
 
   op rank : Expr -> Nat .
-  eq rank(I) = 0 .
+  eq rank(RA) = 0 .
   eq rank(str(Str)) = 1 .
   eq rank(s(Q)) = 2 .
   eq rank(? Q) = 3 .
@@ -81,7 +81,7 @@ fmod WL-ORDER is
   op ltE : Expr Expr -> Bool .
   op ltA : ArgList ArgList -> Bool .
   ceq ltE(E, E2) = rank(E) < rank(E2) if rank(E) =/= rank(E2) .
-  eq ltE(I, J) = I < J .
+  eq ltE(RA, RB) = RA < RB .
   eq ltE(str(Str), str(Str2)) = Str < Str2 .
   eq ltE(s(Q), s(Q2)) = string(Q) < string(Q2) .
   eq ltE(? Q, ? Q2) = string(Q) < string(Q2) .
@@ -217,7 +217,7 @@ fmod WL-EVAL is
   op r : St ArgList -> R [ctor] .
 
   var S S0 S1 S2 : St . var Ds Ds0 : Defs . var Dd : Def .
-  var N : Nat . var I J : Int .
+  var N : Nat . var I J : Int . var RA RB : Rat .
   var E E1 E2 H L Rh Cnd V V2 HV Last : Expr .
   var A A1 AV Rest : ArgList .
   var Q F AT : Qid . var B : Bnds . var Sb : Substitution .
@@ -253,7 +253,8 @@ fmod WL-EVAL is
    && at('TagSetDelayed, 'HoldAll) && at('UpSetDelayed, 'HoldAll)
    && at('Module, 'HoldAll) && at('With, 'HoldAll) && at('Which, 'HoldAll)
    && at('Switch, 'HoldRest) && at('For, 'HoldAll)
-   && at('Unset, 'HoldAll) && at('Clear, 'HoldAll) .
+   && at('Unset, 'HoldAll) && at('Clear, 'HoldAll)
+   && at('Block, 'HoldAll) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -386,6 +387,8 @@ fmod WL-EVAL is
   var L2 : Expr . var Cs Cs1 Cs2 : ArgList .
   var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
   var Ini Inc Body : Expr . var C : Constant . var NeTL : NeTermList .
+  var NZ : NzNat . var At2 : Attrs . var Ds2 : Defs .
+  var NZI : NzInt . var NZN : NzNat .
 
   *** ---------------------------------------------------- evaluator
   op ev : St Expr -> R .
@@ -409,7 +412,7 @@ fmod WL-EVAL is
   eq isSpecial(E) = false [owise] .
 
   *** atoms and inert forms
-  eq ev(S, I) = r(S, I) .
+  eq ev(S, RA) = r(S, RA) .
   eq ev(S, str(Str)) = r(S, str(Str)) .
   eq ev(S, s(Q)) = apply(S, s(Q)) .
   eq ev(S, ? Q) = r(S, ? Q) .
@@ -534,28 +537,36 @@ fmod WL-EVAL is
   *** numeric prefix, keep the symbolic tail
   eq builtin(S, ap(s('Plus), nilA)) = r(S, 0) .
   eq builtin(S, ap(s('Plus), E)) = r(S, E) .
-  eq builtin(S, ap(s('Plus), I :: J :: A)) = builtin(S, ap(s('Plus), (I + J) :: A)) .
+  eq builtin(S, ap(s('Plus), RA :: RB :: A)) = builtin(S, ap(s('Plus), (RA + RB) :: A)) .
   ceq builtin(S, ap(s('Plus), 0 :: A)) = builtin(S, ap(s('Plus), A)) if lenA(A) >= 1 .
   eq builtin(S, ap(s('Times), nilA)) = r(S, 1) .
   eq builtin(S, ap(s('Times), E)) = r(S, E) .
-  eq builtin(S, ap(s('Times), I :: J :: A)) = builtin(S, ap(s('Times), (I * J) :: A)) .
+  eq builtin(S, ap(s('Times), RA :: RB :: A)) = builtin(S, ap(s('Times), (RA * RB) :: A)) .
   ceq builtin(S, ap(s('Times), 1 :: A)) = builtin(S, ap(s('Times), A)) if lenA(A) >= 1 .
   ceq builtin(S, ap(s('Times), 0 :: A)) = r(S, 0) if lenA(A) >= 1 .
 
-  ceq builtin(S, ap(s('Power), I :: J)) = r(S, I ^ J) if J >= 0 .
-  eq builtin(S, ap(s('Less), I :: J)) = r(S, bool2wl(I < J)) .
-  eq builtin(S, ap(s('Greater), I :: J)) = r(S, bool2wl(I > J)) .
-  eq builtin(S, ap(s('LessEqual), I :: J)) = r(S, bool2wl(I <= J)) .
-  eq builtin(S, ap(s('GreaterEqual), I :: J)) = r(S, bool2wl(I >= J)) .
-  eq builtin(S, ap(s('Equal), I :: J)) = r(S, bool2wl(I == J)) .
+  ceq builtin(S, ap(s('Power), RA :: J)) = r(S, RA ^ J) if J >= 0 .
+  ceq builtin(S, ap(s('Power), RA :: J)) = r(S, 1 / (RA ^ (- J)))
+    if J < 0 /\ RA =/= 0 .
+  eq builtin(S, ap(s('Divide), RA :: RB)) = r(S, RA / RB) .
+  eq builtin(S, ap(s('Numerator), I)) = r(S, I) .
+  eq builtin(S, ap(s('Numerator), NZI / NZN)) = r(S, NZI) .
+  eq builtin(S, ap(s('Denominator), I)) = r(S, 1) .
+  eq builtin(S, ap(s('Denominator), NZI / NZN)) = r(S, NZN) .
+  eq builtin(S, ap(s('Less), RA :: RB)) = r(S, bool2wl(RA < RB)) .
+  eq builtin(S, ap(s('Greater), RA :: RB)) = r(S, bool2wl(RA > RB)) .
+  eq builtin(S, ap(s('LessEqual), RA :: RB)) = r(S, bool2wl(RA <= RB)) .
+  eq builtin(S, ap(s('GreaterEqual), RA :: RB)) = r(S, bool2wl(RA >= RB)) .
+  eq builtin(S, ap(s('Equal), RA :: RB)) = r(S, bool2wl(RA == RB)) .
   ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, s('True)) if E == E1 .
 
   eq builtin(S, ap(s('Head), ap(H, A))) = r(S, H) .
   eq builtin(S, ap(s('Head), I)) = r(S, s('Integer)) .
+  ceq builtin(S, ap(s('Head), RA)) = r(S, s('Rational)) if not (RA :: Int) .
   eq builtin(S, ap(s('Head), str(Str))) = r(S, s('String)) .
   eq builtin(S, ap(s('Head), s(Q))) = r(S, s('Symbol)) .
   eq builtin(S, ap(s('Length), ap(H, A))) = r(S, lenA(A)) .
-  eq builtin(S, ap(s('Length), I)) = r(S, 0) .
+  eq builtin(S, ap(s('Length), RA)) = r(S, 0) .
   eq builtin(S, ap(s('Length), str(Str))) = r(S, 0) .
   eq builtin(S, ap(s('Length), s(Q))) = r(S, 0) .
 
@@ -765,6 +776,80 @@ fmod WL-EVAL is
   *** builtins already gives up-value behavior (1.6 approximation)
   eq builtin(S, ap(s('TagSetDelayed), s(F) :: L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
   eq builtin(S, ap(s('UpSetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
+
+  *** indexing and list restructuring
+  ceq builtin(S, ap(s('Part), E :: 0)) = builtin(S, ap(s('Head), E)) if true .
+  ceq builtin(S, ap(s('Part), ap(H, A) :: I)) = r(S, E2)
+    if I > 0 /\ E2 := nthA(A, I) .
+  eq builtin(S, ap(s('Last), ap(H, A :: E))) = r(S, E) .
+  eq builtin(S, ap(s('Sort), ap(H, A))) = r(S, ap(H, sortA(A))) .
+  op takeA : ArgList Nat -> ArgList .
+  eq takeA(A, 0) = nilA .
+  eq takeA(nilA, N) = nilA .
+  ceq takeA(E :: A, s N) = E :: takeA(A, N) if true .
+  op dropA : ArgList Nat -> ArgList .
+  eq dropA(A, 0) = A .
+  eq dropA(nilA, N) = nilA .
+  ceq dropA(E :: A, s N) = dropA(A, N) if true .
+  op partB : ArgList NzNat -> ArgList .
+  eq partB(nilA, NZ) = nilA .
+  ceq partB(A, NZ) = if lenA(A) >= NZ
+      then ap(s('List), takeA(A, NZ)) :: partB(dropA(A, NZ), NZ)
+      else nilA fi
+    if lenA(A) >= 1 .
+  ceq builtin(S, ap(s('Partition), ap(H, A) :: NZ)) = r(S, ap(H, partB(A, NZ)))
+    if true .
+  op headsA : ArgList -> ArgList .
+  op tailsA : ArgList -> ArgList .
+  eq headsA(nilA) = nilA .
+  eq headsA(ap(H, E :: A) :: A1) = E :: headsA(A1) .
+  eq tailsA(nilA) = nilA .
+  eq tailsA(ap(H, E :: A) :: A1) = ap(H, A) :: tailsA(A1) .
+  op allNonEmpty : ArgList -> Bool .
+  eq allNonEmpty(nilA) = true .
+  eq allNonEmpty(ap(H, E :: A) :: A1) = allNonEmpty(A1) .
+  eq allNonEmpty(A) = false [owise] .
+  op transB : ArgList -> ArgList .
+  eq transB(A) = if allNonEmpty(A)
+    then ap(s('List), headsA(A)) :: transB(tailsA(A))
+    else nilA fi .
+  eq builtin(S, ap(s('Transpose), ap(s('List), A))) = r(S, ap(s('List), transB(A))) .
+
+  *** Block: dynamic scoping - save own-value definitions of the listed
+  *** symbols, install initializers, run the body, restore
+  op ownDefs : Defs Qid -> Defs .
+  eq ownDefs(noD, Q) = noD .
+  ceq ownDefs(d('s[C], Rh) | Ds, Q) = d('s[C], Rh) | ownDefs(Ds, Q)
+    if C == symConst(Q) .
+  eq ownDefs(Dd | Ds, Q) = ownDefs(Ds, Q) [owise] .
+  op clearOwn : Defs Qid -> Defs .
+  eq clearOwn(noD, Q) = noD .
+  ceq clearOwn(d('s[C], Rh) | Ds, Q) = clearOwn(Ds, Q) if C == symConst(Q) .
+  eq clearOwn(Dd | Ds, Q) = Dd | clearOwn(Ds, Q) [owise] .
+  op blockName : Expr -> Qid .
+  eq blockName(s(Q)) = Q .
+  eq blockName(ap(s('Set), s(Q) :: Ini)) = Q .
+  op savedOf : Defs ArgList -> Defs .
+  eq savedOf(Ds, nilA) = noD .
+  eq savedOf(Ds, E :: A) = catD(ownDefs(Ds, blockName(E)), savedOf(Ds, A)) .
+  op catD : Defs Defs -> Defs .
+  eq catD(noD, Ds) = Ds .
+  eq catD(Dd | Ds, Ds0) = Dd | catD(Ds, Ds0) .
+  op clearAllOwn : Defs ArgList -> Defs .
+  eq clearAllOwn(Ds, nilA) = Ds .
+  eq clearAllOwn(Ds, E :: A) = clearAllOwn(clearOwn(Ds, blockName(E)), A) .
+  op blockInits : ArgList -> ArgList .
+  eq blockInits(nilA) = nilA .
+  eq blockInits(s(Q) :: A) = blockInits(A) .
+  eq blockInits(ap(s('Set), s(Q) :: Ini) :: A)
+    = ap(s('Set), s(Q) :: Ini) :: blockInits(A) .
+  op restoreD : Defs Defs -> Defs .
+  eq restoreD(Ds, noD) = Ds .
+  eq restoreD(Ds, Dd | Ds0) = restoreD(insDef(Ds, Dd), Ds0) .
+  ceq builtin(st(Ds, At, s N), ap(s('Block), ap(s('List), A1) :: Body))
+    = r(st(restoreD(clearAllOwn(Ds2, A1), savedOf(Ds, A1)), At2, N2), V)
+    if r(st(Ds2, At2, N2), V) :=
+         evSeq(st(clearAllOwn(Ds, A1), At, N), blockInits(A1) :: Body, s('Null)) .
 
   *** Which / Switch / For
   op whichB : St ArgList -> R .

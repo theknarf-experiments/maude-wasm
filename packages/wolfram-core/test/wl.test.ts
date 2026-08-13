@@ -377,6 +377,39 @@ const cases: Array<[string, string, string]> = [
          ap(s('Times), ap(s('Slot), 1) :: 2))) :: 1))`,
     "ap(s('List), ap(s('List), 0 :: 1 :: 3 :: 6) :: 16)",
   ],
+  // -- phase 4: numerics -----------------------------------------------
+  [
+    "exact rational arithmetic",
+    `ap(s('List),
+       ap(s('Plus), 1/2 :: 1/3) ::
+       ap(s('Power), 2 :: -1) ::
+       ap(s('Times), 5 :: ap(s('Power), 3 :: -1)) ::
+       ap(s('Divide), 5 :: 3) ::
+       ap(s('Numerator), 6/4) ::
+       ap(s('Less), 1/3 :: 1/2))`,
+    "ap(s('List), 5/6 :: 1/2 :: 5/3 :: 5/3 :: 3 :: s('True))",
+  ],
+  [
+    "Part, Last, Sort, Partition, Transpose",
+    `ap(s('List),
+       ap(s('Part), ap(s('List), 10 :: 20 :: 30) :: 2) ::
+       ap(s('Part), ap(s('foo), 1 :: 2) :: 0) ::
+       ap(s('Last), ap(s('List), 1 :: 2 :: 3)) ::
+       ap(s('Sort), ap(s('List), 3 :: 1 :: 2)) ::
+       ap(s('Partition), ap(s('List), 1 :: 2 :: 3 :: 4 :: 5) :: 2) ::
+       ap(s('Transpose), ap(s('List),
+         ap(s('List), 1 :: 2) :: ap(s('List), 3 :: 4))))`,
+    "ap(s('List), 20 :: s('foo) :: 3 :: ap(s('List), 1 :: 2 :: 3) :: ap(s('List), ap(s('List), 1 :: 2) :: ap(s('List), 3 :: 4)) :: ap(s('List), ap(s('List), 1 :: 3) :: ap(s('List), 2 :: 4)))",
+  ],
+  [
+    "Block dynamic scoping: body sees inner value, outer restored",
+    `ap(s('Set), s('v) :: 10) ::
+     ap(s('SetDelayed), ap(s('getv), nilA) :: s('v)) ::
+     ap(s('List),
+       ap(s('Block), ap(s('List), ap(s('Set), s('v) :: 99)) :: ap(s('getv), nilA)) ::
+       s('v))`,
+    "ap(s('List), 99 :: 10)",
+  ],
 ];
 
 describe("WL/M conformance", () => {

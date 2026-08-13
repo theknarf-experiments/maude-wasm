@@ -212,10 +212,11 @@ conformance table in `test/wl.test.ts` covers each item below.
       fresh symbols suffixed with the self-decremented fuel value, so
       nesting and recursion are collision-free; initializers evaluate
       outside the scope) and `With` (evaluated-initializer
-      substitution). *Pending:* `Block` (dynamic scoping needs
-      save/restore of own-value definitions around the body); Module
-      locals persist as leaked temporaries like WL's Temporary symbols
-      but are never garbage-collected.
+      substitution). *Also done:* `Block` (dynamic scoping via save/restore of
+      own-value definitions around the body — verified through a
+      function call observing the inner value). Module locals persist
+      as leaked temporaries like WL's Temporary symbols but are never
+      garbage-collected.
 - [~] **3.2 `Function`.** *Done:* `Function[{vars}, body][args]`
       (binding via the substitution machinery) and `Function[body]` with
       `Slot[n]` (slots do not reach into nested Function bodies, per
@@ -240,8 +241,14 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 ## Phase 4 — Numerics & data types
 
-- [ ] **4.1 Exact numerics**: `Integer`/`Rational` on GMP (free),
-      `Complex` over exact parts, `GCD`, `Factorial`, `Binomial`, etc.
+- [~] **4.1 Exact numerics.** *Done:* `Integer`/`Rational` on Maude's
+      RAT (atoms are now `Rat < Expr`): exact folding in Plus/Times,
+      negative powers (`2^-1` -> `1/2`, handled manually since RAT's
+      `^` wants a Nat exponent), `Divide`, `Numerator`/`Denominator`
+      (by matching the canonical `NzInt / NzNat` form), rational
+      comparisons. Division works through the parser form
+      `Times[a, Power[b, -1]]`. *Pending:* `Complex`, `GCD`,
+      `Factorial`, `Binomial`.
 - [ ] **4.2 Machine reals** on Maude `FLOAT`; numeric contagion rules
       (exact + inexact → inexact).
 - [ ] **4.3 Arbitrary-precision reals.** Scaled-integer bigfloats with
@@ -260,9 +267,11 @@ conformance table in `test/wl.test.ts` covers each item below.
 - [~] **5.1 Structural.** *Done:* `Map`, `Apply`, `Range`, `First`,
       `Rest`, `Total`, `Fold`, `Nest`, `NestList`, `Select`, `Flatten`
       (all levels), `Join`, `Table` (single iterator). *Also done:* `FoldList`,
-      `FixedPoint`. *Pending:* `MapThread`, `Thread`, `NestWhile`,
-      `Sort` (with ordering functions), `GroupBy`, `Partition`,
-      `Transpose`, `Riffle`, `Tuples`, multi-iterator `Table`.
+      `FixedPoint`, `Part` (level 1 + Part 0 = Head), `Last`, `Sort`
+      (canonical order), `Partition`, `Transpose`. *Pending:*
+      `MapThread`, `Thread`, `NestWhile`, `Sort` with ordering
+      functions, `GroupBy`, `Riffle`, `Tuples`, multi-iterator
+      `Table`, nested `Part` specs.
 - [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).
 - [ ] **5.3 Symbolic basics**: `Expand`, `Together` (polynomial-level),
       `D` (differentiation is a small rule set), `Collect`,
