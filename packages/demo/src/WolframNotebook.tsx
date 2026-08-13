@@ -137,9 +137,7 @@ export function WolframNotebook({ maude }: { maude: Runner }) {
       <button
         type="button"
         className="add-cell"
-        onClick={() =>
-          setCells((cs) => [...cs, newCell("")])
-        }
+        onClick={() => setCells((cs) => [...cs, newCell("")])}
       >
         + Add cell
       </button>
