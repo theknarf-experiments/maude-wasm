@@ -85,7 +85,7 @@ const cases: Array<[string, string]> = [
   ["Expand[(x + y)*(x - y)]", "x^2 - y^2"],
   ["D[Sin[x^2], x]", "2*x*Cos[x^2]"],
   ["D[Exp[2*x] + Sin[x]*Cos[x], x]", "Cos[x]^2 - Sin[x]^2 + 2*Exp[2*x]"],
-  ["Integrate[(x + 1)^2, x]", "x + x^2 + 1/3*x^3"],
+  ["Integrate[(x + 1)^2, x]", "1/3*(1 + x)^3"],
   ["Integrate[Sin[x] + Cos[x], x]", "Sin[x] - Cos[x]"],
   ["Integrate[x^-1, x]", "Log[x]"],
   ["Coefficient[(x + 2)^3, x, 2]", "6"],
@@ -198,7 +198,50 @@ const cases: Array<[string, string]> = [
   ["(1 + 2*I) * (3 - I)", "Complex[5, 5]"],
   ["(1 + I) + (1 - I)", "2"],
   ["{Re[3 + 4*I], Im[3 + 4*I], Conjugate[2 + 3*I]}", "{3, 4, Complex[2, -3]}"],
+  // Exponent / Collect / Together
+  ["Exponent[3*x^4 + x + 1, x]", "4"],
+  ["Collect[a*x + b*x + c, x]", "c + x*(a + b)"],
+  ["Together[1/x + 1/y]", "(x + y)/(x*y)"],
+  ["Together[a/b + c/d]", "(a*d + b*c)/(b*d)"],
+  // linear-substitution integration (Rubi rules) + division printing
+  ["Integrate[(2*x + 5)^3, x]", "1/8*(5 + 2*x)^4"],
+  ["Integrate[1/(2*x + 3), x]", "1/2*Log[3 + 2*x]"],
+  ["Integrate[Sin[2*x], x]", "-1/2*Cos[2*x]"],
+  ["Integrate[x/(x + 1), x]", "x - Log[1 + x]"],
+  ["{x/(1 + x), 1/x, x^-2}", "{x/(1 + x), 1/x, 1/x^2}"],
 ];
+
+// The Rubi-style corpus is self-checking: differentiating each
+// antiderivative must give back the integrand. Together combines the
+// rational terms over a common denominator and Expand cancels the
+// polynomial numerator, so the difference reduces to literal 0.
+const integrands = [
+  "x^5",
+  "(x + 1)^2",
+  "3*x^2 + 2*x + 1",
+  "x^-2",
+  "1/(x + 2)",
+  "1/(2*x + 3)",
+  "(2*x + 5)^3",
+  "(x + 1)*(x + 2)",
+  "Sin[2*x]",
+  "Cos[3*x]",
+  "Exp[2*x]",
+  "Sin[x] + Cos[x]",
+  "Sin[x + 1]",
+  "Exp[3*x + 2]",
+  "x/(x + 1)",
+  "x/(2*x + 1)",
+];
+
+describe("integration corpus: D[Integrate[f, x], x] == f", () => {
+  it.each(integrands.map((f) => [f] as [string]))("%s", async (f) => {
+    const { output } = await evaluateWL(
+      `Expand[Together[D[Integrate[${f}, x], x] - (${f})]]`,
+    );
+    expect(output).toBe("0");
+  });
+});
 
 describe("end-to-end Wolfram notation", () => {
   it.each(cases)("%s", async (program, expected) => {

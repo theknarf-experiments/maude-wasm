@@ -392,15 +392,37 @@ function mkInfix(op: string, lhs: Ast, rhs: Ast): Ast {
         args: [lhs, { kind: "apply", head: sym("Times"), args: negArgs }],
       };
     }
-    case "$Divide":
-      return {
-        kind: "apply",
-        head: sym("Times"),
-        args: [
-          lhs,
-          { kind: "apply", head: sym("Power"), args: [rhs, int("-1")] },
-        ],
-      };
+    case "$Divide": {
+      // a*b/c flattens into one Times, 1/x is a bare Power, and a
+      // power in the divisor negates its exponent — all as in WL
+      const inv: Ast =
+        rhs.kind === "apply" &&
+        rhs.head.kind === "symbol" &&
+        rhs.head.name === "Power" &&
+        rhs.args.length === 2 &&
+        rhs.args[1].kind === "int"
+          ? {
+              kind: "apply",
+              head: sym("Power"),
+              args: [
+                rhs.args[0],
+                int(
+                  rhs.args[1].value.startsWith("-")
+                    ? rhs.args[1].value.slice(1)
+                    : `-${rhs.args[1].value}`,
+                ),
+              ],
+            }
+          : { kind: "apply", head: sym("Power"), args: [rhs, int("-1")] };
+      if (lhs.kind === "int" && lhs.value === "1") return inv;
+      const args =
+        lhs.kind === "apply" &&
+        lhs.head.kind === "symbol" &&
+        lhs.head.name === "Times"
+          ? [...lhs.args, inv]
+          : [lhs, inv];
+      return { kind: "apply", head: sym("Times"), args };
+    }
     case "$Prefix":
       return { kind: "apply", head: lhs, args: [rhs] };
     case "$Postfix":

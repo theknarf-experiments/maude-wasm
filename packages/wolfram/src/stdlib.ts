@@ -38,6 +38,29 @@ dist[a_, b_] := a * b;
 expandPow[a_, 1] := a;
 expandPow[a_, n_] := dist[a, expandPow[a, n + -1]];
 
+(* linear substitution a x + b: canonical order puts the constant
+   first, so both orderings of the sum appear as patterns *)
+Integrate[(b_ + x_)^n_, x_] :=
+  (b + x)^(n + 1) * (1/(n + 1)) /; FreeQ[{b, n}, x] && n != -1;
+Integrate[(b_ + a_ * x_)^n_, x_] :=
+  (b + a*x)^(n + 1) * (1/(a*(n + 1))) /; FreeQ[{a, b, n}, x] && n != -1;
+Integrate[(b_ + x_)^-1, x_] := Log[b + x] /; FreeQ[b, x];
+Integrate[(b_ + a_ * x_)^-1, x_] := Log[b + a*x] * (1/a) /; FreeQ[{a, b}, x];
+Integrate[Sin[a_ * x_], x_] := -Cos[a*x] * (1/a) /; FreeQ[a, x];
+Integrate[Cos[a_ * x_], x_] := Sin[a*x] * (1/a) /; FreeQ[a, x];
+Integrate[Exp[a_ * x_], x_] := Exp[a*x] * (1/a) /; FreeQ[a, x];
+Integrate[Sin[b_ + x_], x_] := -Cos[b + x] /; FreeQ[b, x];
+Integrate[Cos[b_ + x_], x_] := Sin[b + x] /; FreeQ[b, x];
+Integrate[Exp[b_ + x_], x_] := Exp[b + x] /; FreeQ[b, x];
+Integrate[Sin[b_ + a_ * x_], x_] := -Cos[b + a*x] * (1/a) /; FreeQ[{a, b}, x];
+Integrate[Cos[b_ + a_ * x_], x_] := Sin[b + a*x] * (1/a) /; FreeQ[{a, b}, x];
+Integrate[Exp[b_ + a_ * x_], x_] := Exp[b + a*x] * (1/a) /; FreeQ[{a, b}, x];
+
+(* simple rational forms via polynomial division *)
+Integrate[x_ * (b_ + x_)^-1, x_] := x - b * Log[b + x] /; FreeQ[b, x];
+Integrate[x_ * (b_ + a_ * x_)^-1, x_] :=
+  x * (1/a) - (b/a^2) * Log[b + a*x] /; FreeQ[{a, b}, x];
+
 (* fall back to expanding the integrand, retrying once it changes *)
 Integrate[e_, x_] := Integrate[Expand[e], x] /; !(e === Expand[e]);
 
@@ -47,6 +70,32 @@ coefSum[a_ + r__, x_, n_] := coefSum[a, x, n] + coefSum[Plus[r], x, n];
 coefSum[t_, x_, n_] := coefFree[t * x^(-1 * n), x];
 coefFree[u_, x_] := u /; FreeQ[u, x];
 coefFree[u_, x_] := 0;
+
+(* Exponent and Collect over the expanded form *)
+Exponent[e_, x_] := expTop[Expand[e], x];
+expTop[a_ + r__, x_] := Max[expTop[a, x], expTop[Plus[r], x]];
+expTop[t_, x_] := 0 /; FreeQ[t, x];
+expTop[x_, x_] := 1;
+expTop[x_^n_, x_] := n;
+expTop[c_ * r__, x_] := expTop[Times[r], x] /; FreeQ[c, x];
+expTop[t_, x_] := 1;
+Collect[e_, x_] :=
+  Total[Table[Coefficient[e, x, n] * x^n, {n, 0, Exponent[e, x]}]];
+
+(* Together: combine sums of fractions over a common denominator *)
+num[r_Rational] := Numerator[r];
+den[r_Rational] := Denominator[r];
+num[t_ * r__] := num[t] * num[Times[r]];
+den[t_ * r__] := den[t] * den[Times[r]];
+num[Power[b_, n_]] := 1 /; NumberQ[n] && n < 0;
+den[Power[b_, n_]] := b^(0 - n) /; NumberQ[n] && n < 0;
+num[t_] := t;
+den[t_] := 1;
+Together[a_ + r__] := togAdd[Together[a], Together[Plus[r]]];
+Together[e_] := e;
+togAdd[p_, q_] := togFrac[num[p]*den[q] + num[q]*den[p], den[p]*den[q]];
+togFrac[n_, 1] := n;
+togFrac[n_, d_] := Expand[n] / d;
 
 (* protection *)
 SetAttributes[Protect, HoldAll];

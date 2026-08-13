@@ -178,6 +178,69 @@ function fmt(core: Core, parentPrec: number): string {
       if (headSym === "Function" && core.args.length === 1) {
         return `${fmt(core.args[0], 26)} &`;
       }
+      // a bare negative power prints as a reciprocal: x^-2 becomes 1/x^2
+      if (
+        headSym === "Power" &&
+        core.args.length === 2 &&
+        core.args[1].kind === "num" &&
+        core.args[1].value.startsWith("-")
+      ) {
+        const e = core.args[1].value.slice(1);
+        const denCore: Core =
+          e === "1"
+            ? core.args[0]
+            : {
+                kind: "apply",
+                head: core.head,
+                args: [core.args[0], { kind: "num", value: e }],
+              };
+        const body = `1/${fmt(denCore, 92)}`;
+        return parentPrec > 90 ? `(${body})` : body;
+      }
+      // negative-exponent factors print as division: x*(1 + x)^-1
+      // becomes x/(1 + x)
+      if (headSym === "Times" && core.args.length >= 2) {
+        const num: Core[] = [];
+        const den: Core[] = [];
+        for (const a of core.args) {
+          if (
+            a.kind === "apply" &&
+            a.head.kind === "symbol" &&
+            a.head.name === "Power" &&
+            a.args.length === 2 &&
+            a.args[0] !== undefined &&
+            a.args[1].kind === "num" &&
+            a.args[1].value.startsWith("-")
+          ) {
+            const e = a.args[1].value.slice(1);
+            den.push(
+              e === "1"
+                ? a.args[0]
+                : {
+                    kind: "apply",
+                    head: a.head,
+                    args: [a.args[0], { kind: "num", value: e }],
+                  },
+            );
+          } else {
+            num.push(a);
+          }
+        }
+        if (den.length > 0) {
+          const one: Core = { kind: "num", value: "1" };
+          const wrap = (parts: Core[]): Core =>
+            parts.length === 1
+              ? parts[0]
+              : {
+                  kind: "apply",
+                  head: { kind: "symbol", name: "Times" },
+                  args: parts,
+                };
+          const numCore = num.length === 0 ? one : wrap(num);
+          const body = `${fmt(numCore, 90)}/${fmt(wrap(den), 92)}`;
+          return parentPrec > 90 ? `(${body})` : body;
+        }
+      }
       if (headSym === "Plus" && core.args.length >= 2) {
         const prec = INFIX_FORMS.Plus.prec;
         let body = "";

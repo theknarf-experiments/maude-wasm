@@ -350,8 +350,12 @@ conformance table in `test/wl.test.ts` covers each item below.
       *Also done:* `Coefficient[e, x, n]`
       (over the expanded form) and special values (`Sin[0]`, `Cos[0]`,
       `Exp[0]`, `Log[1]`). The formatter prints subtractions
-      (`x^2 - y^2`, not `x^2 + -1*y^2`). *Pending:* `Together`,
-      `Collect`.
+      (`x^2 - y^2`, not `x^2 + -1*y^2`) and negative powers as
+      division (`x/(1 + x)`, `1/x^2`). *Also done:* `Exponent`,
+      `Collect` (via `Table` over `Coefficient` — iterator bounds now
+      evaluate under Table's HoldAll), and `Together` (structural
+      `num`/`den` split of each term, pairwise combination over a
+      common denominator, expanded numerator) — all in the stdlib.
 - [x] **5.4 Bootstrap library**: `packages/wolfram/src/stdlib.ts`
       holds WL-notation definitions parsed and evaluated at session
       start (evaluateWL and the notebook worker both prepend it); the
@@ -363,8 +367,16 @@ conformance table in `test/wl.test.ts` covers each item below.
       exact rational coefficients. *Grown:* trig/exp/log antiderivatives,
       `x^-1 -> Log[x]`, and the Rubi-signature expand-and-retry
       fallback rule (`Integrate[e_, x_] := Integrate[Expand[e], x] /;
-      !(e === Expand[e])`), so `Integrate[(x+1)^2, x]` works. *Pending:*
-      the actual Rubi rational-functions chapter with its test corpus.
+      !(e === Expand[e])`). *Grown again:* the linear-substitution
+      chapter — `(b + a x)^n` (including `n = -1` → `Log`), `Sin`/
+      `Cos`/`Exp` of linear arguments (each rule in both canonical
+      argument orders, since matching is not modulo Orderless), and
+      simple rational forms `x/(b + a x)` via polynomial division.
+      The test corpus is *self-checking*: for each integrand,
+      `Expand[Together[D[Integrate[f, x], x] - f]]` must be literal 0,
+      which exercises D, the chain rules, Together and Expand in one
+      loop. *Pending:* partial fractions for general rational
+      functions.
 
 ## Phase 6 — Parser & frontend
 

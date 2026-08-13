@@ -1326,6 +1326,20 @@ fmod WL-EVAL is
   ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: I :: J)))
     = r(S1, ap(s('List), AV))
     if r(S1, AV) := tableIter(S0, E, Q, I, J) .
+  *** iterator bounds evaluate even though Table holds its arguments
+  op allInt : ArgList -> Bool .
+  eq allInt(nilA) = true .
+  eq allInt(I :: A) = allInt(A) .
+  eq allInt(A) = false [owise] .
+  op tblK : St Expr Qid ArgList ArgList -> R .
+  ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: A))) = tblK(S1, E, Q, A, AV)
+    if not allInt(A) /\ lenA(A) <= 2 /\ r(S1, AV) := evAll(S0, A) .
+  ceq tblK(S, E, Q, A, AV) = r(S, ap(s('Table), E :: ap(s('List), s(Q) :: A)))
+    if AV == A .
+  ceq tblK(S, E, Q, A, AV)
+    = builtin(S, ap(s('Table), E :: ap(s('List), s(Q) :: AV)))
+    if AV =/= A .
+
   *** multiple iterators nest: Table[e, it1, it2, ...] builds rows of
   *** Table[e, it2, ...] with it1's variable bound outermost
   op isIterSpec : Expr -> Bool .
