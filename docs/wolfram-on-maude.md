@@ -403,10 +403,18 @@ conformance table in `test/wl.test.ts` covers each item below.
       factored through a perfect-square discriminant test (`isq` is a
       WL-level integer square root) and recursion into the
       linear-factor rules; `x/(c + x^2)` goes straight to a `Log`.
-      All corpus-verified by differentiation. Scope boundary, by
-      decision: irreducible quadratics need `ArcTan` (no inverse trig
-      in the library) and irrational roots need symbolic `Sqrt` —
-      both future seams.
+      All corpus-verified by differentiation. *And the irreducible
+      case:* symbolic `Sqrt` (`Sqrt[x_] := x^(1/2)` with exact
+      perfect-square folding — NAT has no `sqrt`, so the engine grew a
+      bisection floor root — and integer-power-of-rational-power
+      collapse so `Sqrt[2]^2` is 2) plus `ArcTan` (chain rule, float
+      `atan`, `ArcTan[1] = Pi/4`, `N[Pi]`) let irreducible quadratics
+      complete the square: `1/(x^2 + 1)` → `ArcTan[x]`,
+      `1/(3 + x^2)` → `ArcTan[x/Sqrt[3]]/Sqrt[3]` — and even the
+      irrational-root case verifies by differentiation because the
+      power collector cancels `3^(1/2) * 3^(-1/2)` symbolically.
+      Remaining seam: radical *denesting* (`Sqrt[8]` stays `Sqrt[8]`,
+      not `2*Sqrt[2]`) and `ArcTan` addition formulas.
 
 ## Phase 6 — Parser & frontend — **DONE**
 
@@ -556,7 +564,7 @@ conformance table in `test/wl.test.ts` covers each item below.
 **The plan is implemented.** Every task above is either built (with
 conformance/e2e/property/fuzz coverage — 50 core + 274 wrapper tests)
 or closed by a recorded decision with its divergence documented.
-Future-work seams left deliberately open: irreducible-quadratic
-integration (needs `ArcTan`/symbolic `Sqrt`, 5.5), bigfloats (4.3),
-`StringExpression` (4.4), contexts (3.5), and differential testing
-against a reference implementation (7.4).
+Future-work seams left deliberately open: radical denesting and
+`ArcTan` addition formulas (5.5), bigfloats (4.3), `StringExpression`
+(4.4), contexts (3.5), and differential testing against a reference
+implementation (7.4).

@@ -891,6 +891,25 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('Power), fl(FL) :: RA)) = r(S, fl(FL ^ float(RA))) .
   eq builtin(S, ap(s('Power), RA :: fl(FL))) = r(S, fl(float(RA) ^ FL)) .
   ceq builtin(S, ap(s('Power), RA :: J)) = r(S, RA ^ J) if J >= 0 .
+  *** exact square roots of perfect squares; other radicals stay
+  *** symbolic as e^{1/2}. NAT has no sqrt - bisection floor root.
+  op isqN : Nat -> Nat .
+  op isqB : Nat Nat Nat -> Nat .
+  eq isqN(N) = isqB(N, 0, N + 1) .
+  ceq isqB(N, N1, N2) = N1 if N2 <= N1 + 1 .
+  ceq isqB(N, N1, N2)
+    = if ((N1 + N2) quo 2) * ((N1 + N2) quo 2) <= N
+      then isqB(N, (N1 + N2) quo 2, N2)
+      else isqB(N, N1, (N1 + N2) quo 2) fi
+    if N2 > N1 + 1 .
+  op psq : Nat -> Bool .
+  eq psq(N) = isqN(N) * isqN(N) == N .
+  ceq builtin(S, ap(s('Power), N :: 1/2)) = r(S, isqN(N)) if psq(N) .
+  ceq builtin(S, ap(s('Power), NZI / NZN :: 1/2)) = r(S, isqN(N) / isqN(N2))
+    if NZI > 0 /\ N := NZI /\ N2 := NZN /\ psq(N) /\ psq(N2) .
+  *** an integer power of a rational power collapses, as in WL
+  ceq builtin(S, ap(s('Power), ap(s('Power), E :: RA) :: J))
+    = builtin(S, ap(s('Power), E :: (RA * J))) if not (RA :: Int) .
   eq builtin(S, ap(s('Power), E :: 0)) = r(S, 1) [owise] .
   eq builtin(S, ap(s('Power), E :: 1)) = r(S, E) [owise] .
   ceq builtin(S, ap(s('Power), RA :: J)) = r(S, 1 / (RA ^ (- J)))
@@ -928,6 +947,7 @@ fmod WL-EVAL is
   op nE1 : Expr -> Expr .
   op nEA : ArgList -> ArgList .
   eq nE1(RA) = fl(float(RA)) .
+  eq nE1(s('Pi)) = fl(pi) .
   eq nE1(ap(H, A)) = ap(nE1(H), nEA(A)) .
   eq nE1(E) = E [owise] .
   eq nEA(nilA) = nilA .
@@ -938,6 +958,7 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('Exp), fl(FL))) = r(S, fl(exp(FL))) .
   ceq builtin(S, ap(s('Log), fl(FL))) = r(S, fl(log(FL))) if FL > 0.0 .
   ceq builtin(S, ap(s('Sqrt), fl(FL))) = r(S, fl(sqrt(FL))) if FL >= 0.0 .
+  eq builtin(S, ap(s('ArcTan), fl(FL))) = r(S, fl(atan(FL))) .
   eq builtin(S, ap(s('Abs), fl(FL))) = r(S, fl(abs(FL))) .
 
   eq builtin(S, ap(s('Head), ap(H, A))) = r(S, H) .

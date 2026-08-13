@@ -67,6 +67,12 @@ const cases: Array<[string, string]> = [
   ["Integrate[1/(2 + 3*x + x^2), x]", "Log[1 + x] - Log[2 + x]"],
   ["Integrate[1/(x^2 + 2*x + 1), x]", "-1/(1 + x)"],
   ["Integrate[x/(x^2 + 5), x]", "1/2*Log[5 + x^2]"],
+  // symbolic square roots and ArcTan
+  ["{Sqrt[16], Sqrt[9/4], Sqrt[2], Sqrt[2]^2}", "{4, 3/2, Sqrt[2], 2}"],
+  ["{ArcTan[1], D[ArcTan[x], x], N[Pi]}[[2]]", "1/(1 + x^2)"],
+  ["Integrate[1/(x^2 + 1), x]", "ArcTan[x]"],
+  ["Integrate[1/(x^2 + 2*x + 5), x]", "1/2*ArcTan[1/2 + 1/2*x]"],
+  ["Integrate[1/(3 + x^2), x]", "ArcTan[x/Sqrt[3]]/Sqrt[3]"],
   ["GroupBy[Range[6], EvenQ]", "<|False -> {1, 3, 5}, True -> {2, 4, 6}|>"],
   ["{10, 20, 30}[[2]]", "20"],
   [
@@ -257,6 +263,12 @@ const integrands = [
   "1/(x^2 - 1)",
   "x/(x^2 + 5)",
   "1/(x^2 + 2*x + 1)",
+  // irreducible quadratics via ArcTan, including an irrational root
+  "1/(x^2 + 1)",
+  "1/(4 + x^2)",
+  "1/(3 + x^2)",
+  "1/(x^2 + 2*x + 5)",
+  "x/(x^2 + 2*x + 5)",
 ];
 
 describe("WolframSession", () => {

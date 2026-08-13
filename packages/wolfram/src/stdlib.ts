@@ -105,8 +105,7 @@ Integrate[((p_ + x_)^2 * (q_ + x_))^-1, x_] :=
 (* quadratic denominators with rational roots: factor through the
    discriminant when it is a perfect square, then recurse into the
    linear-factor rules; x/(c + x^2) integrates directly to a Log *)
-isq[n_] := Module[{k}, k = 0; While[k*k < n, k = k + 1];
-  If[k*k == n, k, -1]];
+isq[n_] := If[IntegerQ[Sqrt[n]], Sqrt[n], -1];
 sqDiscQ[b_, c_] :=
   IntegerQ[b^2 - 4*c] && b^2 - 4*c > 0 && isq[b^2 - 4*c] >= 0;
 quadFac[b_, c_, num_, x_] :=
@@ -126,6 +125,27 @@ Integrate[x_ * (c_ + x_^2 + x_)^-1, x_] :=
 Integrate[x_ * (c_ + x_^2)^-1, x_] := Log[c + x^2] * (1/2) /; FreeQ[c, x];
 Integrate[(c_ + x_^2 + b_ * x_)^-1, x_] :=
   -1/(x + b/2) /; FreeQ[{b, c}, x] && b^2 - 4*c == 0;
+
+(* square roots and inverse tangent *)
+Sqrt[x_] := x^(1/2);
+D[ArcTan[u_], x_] := D[u, x] / (1 + u^2);
+ArcTan[0] = 0; ArcTan[1] = Pi/4;
+
+(* irreducible quadratics complete the square into an ArcTan *)
+Integrate[(c_ + x_^2)^-1, x_] :=
+  ArcTan[x * (1/Sqrt[c])] * (1/Sqrt[c]) /; FreeQ[c, x] && c > 0;
+Integrate[(c_ + x_^2 + b_ * x_)^-1, x_] :=
+  2 * ArcTan[(2*x + b) * (1/Sqrt[4*c - b^2])] * (1/Sqrt[4*c - b^2]) /;
+    FreeQ[{b, c}, x] && b^2 - 4*c < 0;
+Integrate[(c_ + x_^2 + x_)^-1, x_] :=
+  2 * ArcTan[(2*x + 1) * (1/Sqrt[4*c - 1])] * (1/Sqrt[4*c - 1]) /;
+    FreeQ[c, x] && 1 - 4*c < 0;
+Integrate[x_ * (c_ + x_^2 + b_ * x_)^-1, x_] :=
+  Log[c + b*x + x^2] * (1/2) - (b/2) * Integrate[(c + x^2 + b*x)^-1, x] /;
+    FreeQ[{b, c}, x] && b^2 - 4*c < 0;
+Integrate[x_ * (c_ + x_^2 + x_)^-1, x_] :=
+  Log[c + x + x^2] * (1/2) - (1/2) * Integrate[(c + x^2 + x)^-1, x] /;
+    FreeQ[c, x] && 1 - 4*c < 0;
 
 (* fall back to expanding the integrand, retrying once it changes *)
 Integrate[e_, x_] := Integrate[Expand[e], x] /; !(e === Expand[e]);

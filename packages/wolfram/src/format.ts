@@ -178,6 +178,15 @@ function fmt(core: Core, parentPrec: number): string {
       if (headSym === "Function" && core.args.length === 1) {
         return `${fmt(core.args[0], 26)} &`;
       }
+      // half powers print as Sqrt, as in WL InputForm
+      if (
+        headSym === "Power" &&
+        core.args.length === 2 &&
+        core.args[1].kind === "num" &&
+        core.args[1].value === "1/2"
+      ) {
+        return `Sqrt[${fmt(core.args[0], 0)}]`;
+      }
       // a bare negative power prints as a reciprocal: x^-2 becomes 1/x^2
       if (
         headSym === "Power" &&
