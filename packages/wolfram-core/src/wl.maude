@@ -8,8 +8,10 @@
 *** semantics).
 ***
 *** Deliberate divergences from WL (see docs/wolfram-on-maude.md):
-*** - `?? q` has BlankNullSequence (0+) semantics; BlankSequence (1+) and
-***   head-typed blanks arrive in Phase 2.
+*** - `?? q` is BlankNullSequence (0+); `?s q` (BlankSequence, 1+) and
+***   typed sequence blanks hoist their constraints into definition
+***   conditions, so inside ReplaceAll rules (which skip hoisting) they
+***   all degrade to 0+ untyped sequences.
 *** - Set/SetDelayed hold their entire lhs (WL evaluates lhs arguments).
 *** - Orderless canonical order is ours (rank, then structural), not WL's.
 *** - Flat/Orderless affect evaluation-time normalization; matching
@@ -31,7 +33,10 @@ fmod WL-SYNTAX is
   op _::_ : ArgList ArgList -> ArgList [ctor assoc id: nilA prec 60] .
   op ?_ : Qid -> Expr [ctor prec 5] .      *** Blank[q]  (q_)
   op ??_ : Qid -> Expr [ctor prec 5] .     *** BlankNullSequence[q]  (q___)
+  op ?s_ : Qid -> Expr [ctor prec 5] .     *** BlankSequence[q]  (q__)
   op ?h : Qid Qid -> Expr [ctor] .         *** Blank[q, head]  (q_head)
+  op ?sh : Qid Qid -> Expr [ctor] .        *** BlankSequence[q, head]  (q__head)
+  op ??h : Qid Qid -> Expr [ctor] .        *** BlankNullSequence[q, head]  (q___head)
   op unw : Qid Expr -> Expr [ctor] .       *** in-flight Return/Break/Throw
 endfm
 
@@ -67,7 +72,7 @@ endfm
 *** total order on expressions for Orderless canonicalization
 fmod WL-ORDER is
   protecting WL-BINDINGS .
-  var RA RB : Rat . var Q Q2 : Qid . var Str Str2 : String .
+  var RA RB : Rat . var Q Q2 Q3 Q4 : Qid . var Str Str2 : String .
   var E E2 H H2 : Expr . var A A2 : ArgList .
 
   op rank : Expr -> Nat .
@@ -77,6 +82,9 @@ fmod WL-ORDER is
   eq rank(? Q) = 3 .
   eq rank(?h(Q, Q2)) = 3 .
   eq rank(?? Q) = 4 .
+  eq rank(?s Q) = 4 .
+  eq rank(?sh(Q, Q2)) = 4 .
+  eq rank(??h(Q, Q2)) = 4 .
   eq rank(ap(H, A)) = 5 .
   eq rank(unw(Q, E)) = 6 .
 
@@ -89,6 +97,9 @@ fmod WL-ORDER is
   eq ltE(? Q, ? Q2) = string(Q) < string(Q2) .
   eq ltE(?h(Q, Q2), ? Q2) = true [owise] .
   eq ltE(?? Q, ?? Q2) = string(Q) < string(Q2) .
+  eq ltE(?s Q, ?s Q2) = string(Q) < string(Q2) .
+  eq ltE(?sh(Q, Q2), ?sh(Q3, Q4)) = string(Q) < string(Q3) .
+  eq ltE(??h(Q, Q2), ??h(Q3, Q4)) = string(Q) < string(Q3) .
   ceq ltE(ap(H, A), ap(H2, A2)) = ltE(H, H2) if H =/= H2 .
   eq ltE(ap(H, A), ap(H, A2)) = ltA(A, A2) .
   eq ltE(E, E2) = false [owise] .
@@ -134,7 +145,10 @@ fmod WL-META is
   eq nm('s[C]) = 's[reQ(C)] .
   eq nm('?_[C]) = '?_[reQ(C)] .
   eq nm('??_[C]) = '??_[reQ(C)] .
+  eq nm('?s_[C]) = '?s_[reQ(C)] .
   eq nm('?h[C, C2]) = '?h[reQ(C), reQ(C2)] .
+  eq nm('?sh[C, C2]) = '?sh[reQ(C), reQ(C2)] .
+  eq nm('??h[C, C2]) = '??h[reQ(C), reQ(C2)] .
   eq nm(F[NeTL]) = F[nmL(NeTL)] [owise] .
   eq nm(T) = T [owise] .
   eq nmL((T, TL)) = nm(T), nmL(TL) .
@@ -145,6 +159,12 @@ fmod WL-META is
   op p2mL : TermList -> TermList .
   eq p2m('?_[C]) = blankVar(C, ":Expr") .
   eq p2m('??_[C]) = blankVar(C, ":ArgList") .
+  *** sequence-blank constraints (1+, element heads) are hoisted into
+  *** conditions at definition time; here (the un-hoisted ReplaceAll
+  *** path) they degrade to plain 0+ sequences
+  eq p2m('?s_[C]) = blankVar(C, ":ArgList") .
+  eq p2m('?sh[C, C2]) = blankVar(C, ":ArgList") .
+  eq p2m('??h[C, C2]) = blankVar(C, ":ArgList") .
   *** typed blanks: atoms map to sort-typed variables; a user head f
   *** maps to ap(s(f), name$ap$f:ArgList), rebuilt into a whole-expr
   *** binding by mkB below
@@ -285,24 +305,61 @@ fmod WL-EVAL is
   eq isGroundP(T) = T :: GroundTerm .
 
   sort HPC .
-  *** cleaned pattern, hoisted conditions, definition-time bindings,
-  *** fresh-name counter
+  *** cleaned pattern (an ArgList: elements may hoist to none, one, or
+  *** several pattern items), hoisted conditions, definition-time
+  *** bindings, fresh-name counter
   op hpc : ArgList ArgList Bnds Nat -> HPC [ctor] .
   op hoistE : Expr Nat -> HPC .
   op hoistA : ArgList Nat -> HPC .
   eq hoistA(nilA, N) = hpc(nilA, nilA, noBnds, N) .
-  ceq hoistA(E :: A, N) = hpc(E1 :: A1, Cs1 :: Cs2, B1 & B2, N2)
-    if hpc(E1, Cs1, B1, N1) := hoistE(E, N) /\
+  ceq hoistA(E :: A, N) = hpc(A0 :: A1, Cs1 :: Cs2, B1 & B2, N2)
+    if hpc(A0, Cs1, B1, N1) := hoistE(E, N) /\
        hpc(A1, Cs2, B2, N2) := hoistA(A, N1) .
   ceq hoistE(ap(s('Condition), E :: Cnd), N) = hpc(E1, Cs1 :: Cnd, B1, N1)
     if hpc(E1, Cs1, B1, N1) := hoistE(E, N) .
   eq hoistE(ap(s('PatternTest), (? Q) :: E), N) = hpc(? Q, ap(E, s(Q)), noBnds, N) .
   eq hoistE(ap(s('PatternTest), ?h(Q, F) :: E), N) = hpc(?h(Q, F), ap(E, s(Q)), noBnds, N) .
+  *** sequence blanks: match as a plain 0+ sequence variable, with the
+  *** 1+ / element-head constraints hoisted into conditions
+  op seq1C : Qid -> Expr .
+  eq seq1C(Q) = ap(s('GreaterEqual), ap(s('Length), ap(s('List), s(Q))) :: 1) .
+  op allHC : Qid Qid -> Expr .
+  eq allHC(Q, F) = ap(s('$AllHeadQ), ap(s('List), s(Q)) :: s(F)) .
+  op allMC : Qid Expr -> Expr .
+  eq allMC(Q, E) = ap(s('$AllMatchQ), ap(s('List), s(Q)) :: E) .
+  eq hoistE(?s Q, N) = hpc(?? Q, seq1C(Q), noBnds, N) .
+  eq hoistE(?sh(Q, F), N) = hpc(?? Q, seq1C(Q) :: allHC(Q, F), noBnds, N) .
+  eq hoistE(??h(Q, F), N) = hpc(?? Q, allHC(Q, F), noBnds, N) .
+  *** PatternSequence[p...] splices its items into the argument list
+  eq hoistE(ap(s('PatternSequence), A), N) = hoistA(A, N) .
+  *** Repeated[p] / RepeatedNull[p]: a fresh sequence variable with an
+  *** every-element-matches condition (p itself must be condition-free)
+  eq hoistE(ap(s('Repeated), E), N)
+    = hpc(?? qid("$rep" + string(N, 10)),
+          seq1C(qid("$rep" + string(N, 10)))
+            :: allMC(qid("$rep" + string(N, 10)), E),
+          noBnds, N + 1) .
+  eq hoistE(ap(s('RepeatedNull), E), N)
+    = hpc(?? qid("$rep" + string(N, 10)),
+          allMC(qid("$rep" + string(N, 10)), E), noBnds, N + 1) .
+  *** Optional's absent branch (from xAltE): match nothing, pre-bind the
+  *** default into the rhs
+  op absO : Qid Expr -> Expr .
+  eq hoistE(absO(Q, E), N) = hpc(nilA, nilA, bnd(Q, E), N) .
   *** x : patt -- naming: blanks rename to x; Except gets a condition;
   *** ground patterns bind at definition time
   eq hoistE(ap(s('Pattern), s(Q) :: (? Q2)), N) = hpc(? Q, nilA, noBnds, N) .
   eq hoistE(ap(s('Pattern), s(Q) :: (?? Q2)), N) = hpc(?? Q, nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: (?s Q2)), N) = hpc(?? Q, seq1C(Q), noBnds, N) .
   eq hoistE(ap(s('Pattern), s(Q) :: ?h(Q2, F)), N) = hpc(?h(Q, F), nilA, noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ?sh(Q2, F)), N)
+    = hpc(?? Q, seq1C(Q) :: allHC(Q, F), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ??h(Q2, F)), N)
+    = hpc(?? Q, allHC(Q, F), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ap(s('Repeated), E)), N)
+    = hpc(?? Q, seq1C(Q) :: allMC(Q, E), noBnds, N) .
+  eq hoistE(ap(s('Pattern), s(Q) :: ap(s('RepeatedNull), E)), N)
+    = hpc(?? Q, allMC(Q, E), noBnds, N) .
   eq hoistE(ap(s('Pattern), s(Q) :: ap(s('Except), E)), N)
     = hpc(? Q, ap(s('Not), ap(s('MatchQ), s(Q) :: E)), noBnds, N) .
   ceq hoistE(ap(s('Pattern), s(Q) :: E), N) = hpc(E1, Cs1, bnd(Q, E1) & B1, N1)
@@ -320,6 +377,10 @@ fmod WL-EVAL is
   eq isPatOp(s('PatternTest)) = true .
   eq isPatOp(s('Pattern)) = true .
   eq isPatOp(s('Except)) = true .
+  eq isPatOp(s('PatternSequence)) = true .
+  eq isPatOp(s('Repeated)) = true .
+  eq isPatOp(s('RepeatedNull)) = true .
+  eq isPatOp(s('Optional)) = true .
   eq isPatOp(E) = false [owise] .
 
   op mkAnd : ArgList -> Expr .
@@ -355,6 +416,12 @@ fmod WL-EVAL is
   op catAL : ALs ALs -> ALs .
 
   eq xAltE(ap(s('Alternatives), A)) = xAltAlts(A) .
+  *** Optional[x_, d]: two branches - argument supplied, or absent with
+  *** the default pre-bound (absO is consumed by hoistE)
+  eq xAltE(ap(s('Optional), (? Q) :: E)) = (? Q) % (absO(Q, E) % nilEL) .
+  eq xAltE(ap(s('Optional), ?h(Q, F) :: E)) = ?h(Q, F) % (absO(Q, E) % nilEL) .
+  eq xAltE(ap(s('Optional), ap(s('Pattern), s(Q) :: E1) :: E))
+    = ap(s('Pattern), s(Q) :: E1) % (absO(Q, E) % nilEL) .
   eq xAltE(ap(H, A)) = crossHA(xAltE(H), xAltA(A)) [owise] .
   eq xAltE(E) = E % nilEL [owise] .
   eq xAltAlts(nilA) = nilEL .
@@ -386,7 +453,7 @@ fmod WL-EVAL is
     if hpc(L2, Cs, B, N1) := hoistE(L, 0) /\
        P := compileP(L2) /\
        Rh2 := wrapCond(sbE(Rh, B), sbA(Cs, B)) .
-  var L2 : Expr . var Cs Cs1 Cs2 : ArgList .
+  var L2 : Expr . var Cs Cs1 Cs2 A0 : ArgList .
   var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
   var Ini Inc Body : Expr . var C : Constant . var NeTL : NeTermList .
   var NZ : NzNat . var At2 : Attrs . var Ds2 : Defs .
@@ -432,7 +499,10 @@ fmod WL-EVAL is
   eq ev(S, s(Q)) = apply(S, s(Q)) .
   eq ev(S, ? Q) = r(S, ? Q) .
   eq ev(S, ?? Q) = r(S, ?? Q) .
+  eq ev(S, ?s Q) = r(S, ?s Q) .
   eq ev(S, ?h(Q, F)) = r(S, ?h(Q, F)) .
+  eq ev(S, ?sh(Q, F)) = r(S, ?sh(Q, F)) .
+  eq ev(S, ??h(Q, F)) = r(S, ??h(Q, F)) .
 
   *** special heads
   ceq ev(S0, ap(s('If), Cnd :: Rest)) = ifBr(S1, V, Rest)
@@ -756,7 +826,43 @@ fmod WL-EVAL is
   op matchesQ : Expr Expr -> Bool .
   ceq matchesQ(E, L) = true if Sb := metaMatch(MOD, compileP(L), subj(E), nil, 0) .
   eq matchesQ(E, L) = false [owise] .
-  eq builtin(S, ap(s('MatchQ), E :: E1)) = r(S, bool2wl(matchesQ(E, E1))) .
+
+  *** sequence-blank support predicates (targets of hoisted conditions)
+  op headIs : Expr Qid -> Bool .
+  ceq headIs(RA, 'Integer) = true if RA :: Int .
+  ceq headIs(RA, 'Rational) = true if not (RA :: Int) .
+  eq headIs(str(Str), 'String) = true .
+  eq headIs(s(Q), 'Symbol) = true .
+  eq headIs(ap(s(F), A), F) = true .
+  eq headIs(E, F) = false [owise] .
+  op allHeadA : ArgList Qid -> Bool .
+  eq allHeadA(nilA, F) = true .
+  eq allHeadA(E :: A, F) = headIs(E, F) and allHeadA(A, F) .
+  eq builtin(S, ap(s('$AllHeadQ), ap(s('List), A) :: s(F)))
+    = r(S, bool2wl(allHeadA(A, F))) .
+  op allMatchA : ArgList Expr -> Bool .
+  eq allMatchA(nilA, L) = true .
+  eq allMatchA(E :: A, L) = matchesQ(E, L) and allMatchA(A, L) .
+  eq builtin(S, ap(s('$AllMatchQ), ap(s('List), A) :: L))
+    = r(S, bool2wl(allMatchA(A, L))) .
+
+  *** MatchQ hoists the pattern like a definition would and evaluates
+  *** the hoisted conditions per match solution (backtracking over
+  *** sequence splits until one satisfies them)
+  op mkCnd : ArgList -> Expr .
+  eq mkCnd(nilA) = s('True) .
+  eq mkCnd(E :: A) = mkAnd(E :: A) .
+  op matchQLoop : St Term Term Expr Nat -> R .
+  op matchQK : St Expr Term Term Expr Nat -> R .
+  ceq matchQLoop(S0, P, UM, Cnd, N) = matchQK(S1, V, P, UM, Cnd, N)
+    if Sb := metaMatch(MOD, P, UM, nil, N) /\
+       r(S1, V) := ev(S0, sbE(Cnd, s2b(Sb))) .
+  eq matchQLoop(S, P, UM, Cnd, N) = r(S, s('False)) [owise] .
+  eq matchQK(S, s('True), P, UM, Cnd, N) = r(S, s('True)) .
+  eq matchQK(S, V, P, UM, Cnd, N) = matchQLoop(S, P, UM, Cnd, N + 1) [owise] .
+  ceq builtin(S, ap(s('MatchQ), E :: L))
+    = matchQLoop(S, compileP(L2), subj(E), mkCnd(sbA(Cs, B)), 0)
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) .
 
   op freeE : Expr Expr -> Bool .
   op freeA : ArgList Expr -> Bool .

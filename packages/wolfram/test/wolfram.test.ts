@@ -89,6 +89,27 @@ const cases: Array<[string, string]> = [
   ["Coefficient[(x + 2)^3, x, 2]", "6"],
   ["Sin[0] + Cos[0]", "1"],
   ["D[Sin[x]^2, x]", "2*Cos[x]*Sin[x]"],
+  // sequence blanks: __ is 1+, ___ is 0+, both take head types
+  ['g[x__] := "some"; g[x___] := "none"; {g[], g[1]}', '{"none", "some"}'],
+  ["f[x__Integer] := Plus[x]; f[1, 2, 3]", "6"],
+  [
+    'f[x__Integer] := "ints"; f[x___] := "other"; {f[1, 2], f[1, "a"]}',
+    '{"ints", "other"}',
+  ],
+  // Optional defaults, both spellings
+  ["h[x_, y_ : 10] := x + y; {h[1], h[1, 2]}", "{11, 3}"],
+  ["k[Optional[x_Integer, 5]] := x * 2; {k[], k[3]}", "{10, 6}"],
+  // PatternSequence splices; Repeated checks every element
+  ["ps[PatternSequence[x_, y_], z_] := {x, y, z}; ps[1, 2, 3]", "{1, 2, 3}"],
+  ["rep[x : Repeated[_Integer]] := Plus[x]; rep[1, 2, 3]", "6"],
+  [
+    "MatchQ[{1, 1, 1}, {Repeated[1]}] && !MatchQ[{1, 2}, {Repeated[1]}]",
+    "True",
+  ],
+  ["MatchQ[{}, {RepeatedNull[1]}] && !MatchQ[{}, {__Integer}]", "True"],
+  ['MatchQ[{1, 2}, {__Integer}] && !MatchQ[{1, "a"}, {__Integer}]', "True"],
+  // MatchQ evaluates hoisted pattern conditions
+  ["MatchQ[4, x_ /; x > 3] && !MatchQ[2, x_ /; x > 3]", "True"],
 ];
 
 describe("end-to-end Wolfram notation", () => {

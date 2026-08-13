@@ -12,7 +12,8 @@ export type Ast =
       kind: "blank";
       name: string | null;
       head: string | null;
-      sequence: boolean;
+      /** 1 = Blank (_), 2 = BlankSequence (__), 3 = BlankNullSequence (___) */
+      depth: 1 | 2 | 3;
     }
   | { kind: "slot"; index: number }
   | { kind: "apply"; head: Ast; args: Ast[] };
@@ -22,7 +23,7 @@ interface Token {
   text: string;
   name?: string | null;
   head?: string | null;
-  sequence?: boolean;
+  depth?: 1 | 2 | 3;
 }
 
 const OPS = [
@@ -134,7 +135,7 @@ export function tokenize(source: string): Token[] {
           text: src.slice(i, k),
           name,
           head,
-          sequence: underscores > 1,
+          depth: Math.min(underscores, 3) as 1 | 2 | 3,
         });
         i = k;
         continue;
@@ -294,7 +295,7 @@ class Parser {
         kind: "blank",
         name: t.name ?? null,
         head: t.head ?? null,
-        sequence: t.sequence ?? false,
+        depth: t.depth ?? 1,
       };
     }
     if (t.type === "op" && t.text === "(") {
@@ -336,6 +337,12 @@ function int(value: string): Ast {
 
 function mkInfix(op: string, lhs: Ast, rhs: Ast): Ast {
   switch (op) {
+    // `x_ : d` is Optional-with-default; `x : patt` is Pattern naming
+    case "Pattern":
+      if (lhs.kind === "blank") {
+        return { kind: "apply", head: sym("Optional"), args: [lhs, rhs] };
+      }
+      return { kind: "apply", head: sym("Pattern"), args: [lhs, rhs] };
     case "$Minus":
       return {
         kind: "apply",
@@ -411,8 +418,14 @@ export function toCore(ast: Ast): string {
       return `ap(s('Slot), ${ast.index})`;
     case "blank": {
       const name = ast.name ?? `$b${++freshBlank}`;
-      if (ast.head) return `?h('${name}, '${ast.head})`;
-      return ast.sequence ? `?? '${name}` : `? '${name}`;
+      if (ast.head) {
+        if (ast.depth === 2) return `?sh('${name}, '${ast.head})`;
+        if (ast.depth === 3) return `??h('${name}, '${ast.head})`;
+        return `?h('${name}, '${ast.head})`;
+      }
+      if (ast.depth === 2) return `?s '${name}`;
+      if (ast.depth === 3) return `?? '${name}`;
+      return `? '${name}`;
     }
     case "apply": {
       const head = toCore(ast.head);

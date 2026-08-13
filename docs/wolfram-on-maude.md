@@ -163,12 +163,18 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 ## Phase 2 — Full pattern language
 
-- [~] **2.1 Head-typed blanks.** *Done:* `x_h` for atoms
+- [x] **2.1 Head-typed blanks.** *Done:* `x_h` for atoms
       (Integer/String/Symbol map to sort-typed meta-variables) and user
       heads (compiled to `ap(s(h), name$ap$h:ArgList)` with the binding
       rebuilt as the whole expression); specificity scoring makes typed
-      blanks dispatch before plain blanks automatically. *Pending:*
-      sequence-typed `x__h`/`x___h`. Original task: `x_h`, `x__h`, `x___h`.
+      blanks dispatch before plain blanks automatically. *Also done:*
+      sequence blanks with real WL arities — `x__` (1+) vs `x___` (0+)
+      and typed `x__h`/`x___h`: all compile to one associative
+      `ArgList` meta-variable with the 1+/element-head constraints
+      hoisted into definition conditions (`Length[{x}] >= 1`,
+      `$AllHeadQ`). Inside ReplaceAll rules (no hoisting) they degrade
+      to 0+ untyped sequences — documented divergence until rule
+      conditions land.
 - [x] **2.2 Conditions** `patt /; cond` and `PatternTest` (`x_?f`).
       Implemented WL-style: conditions live in the rhs as
       `Condition[rhs, cond]` (lhs-side `/;` and `_?test` are hoisted at
@@ -187,7 +193,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       `Pattern` naming — blank aliases rename the meta-variable, ground
       patterns pre-bind into the rhs at definition time (which composes
       with Alternatives expansion for free: `x : ("yes"|"y")` binds per
-      branch). *Pending:* `Repeated`, `PatternSequence`, `Optional`,
+      branch). *Also done:* `Optional[x_, d]` / `x_ : d` (expanded like
+      Alternatives into a with-arg branch and an absent branch whose
+      default pre-binds into the rhs), `PatternSequence` (definition-time
+      splice into the argument list), and `Repeated`/`RepeatedNull`
+      (fresh sequence variable + hoisted every-element-matches
+      condition; the element pattern must itself be condition-free).
+      MatchQ now hoists its pattern like a definition and evaluates the
+      hoisted conditions per match solution, so `MatchQ[4, x_ /; x > 3]`
+      and sequence/Repeated patterns work at runtime too. *Pending:*
       `Longest`/`Shortest`, naming of structured sub-patterns with
       inner blanks. Gotchas recorded: a `(` as the first token after
       `***` opens Maude's balanced block comment; ops must be declared
@@ -312,12 +326,13 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 - [~] **6.1 WL parser in TypeScript** (`packages/wolfram`). *Done:*
       tokenizer + Pratt parser covering numbers, strings, symbols,
-      blanks (`x_`, `x__`, `_Integer`…), slots/`&`, `{...}`/`f[...]`,
+      blanks (`x_`, `x__`, `x___`, `_Integer`, `x__Integer`…), slots/`&`,
+      `{...}`/`f[...]`, `e[[...]]` Part syntax, `x_ : d` Optional,
       and the operator table (`; = := ^:= // /. //. -> :> /; : | || &&
       == != < > <= >= /@ @@ + - * / ^ @ !`), with `a/b` and `a-b`
       compiling through `Times`/`Power`/`Plus`. *Divergences:* no
-      implicit multiplication, no `%`, no `[[...]]` yet. *Pending:*
-      round-trip property test, `[[...]]` Part syntax.
+      implicit multiplication, no `%`. *Pending:*
+      round-trip property test.
 - [x] **6.2 Formatter**: core result terms print as InputForm with
       precedence-aware parenthesization (`3*(1 + x)`), lists as
       `{...}`, slots/`&`, blanks, strings.

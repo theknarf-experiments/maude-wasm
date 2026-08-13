@@ -4,7 +4,7 @@ type Core =
   | { kind: "num"; value: string }
   | { kind: "string"; value: string }
   | { kind: "symbol"; name: string }
-  | { kind: "blank"; name: string; head: string | null; sequence: boolean }
+  | { kind: "blank"; name: string; head: string | null; depth: 1 | 2 | 3 }
   | { kind: "apply"; head: Core; args: Core[] };
 
 class CoreParser {
@@ -82,18 +82,22 @@ class CoreParser {
       this.expect(")");
       return { kind: "string", value: out };
     }
-    if (this.lit("?h(")) {
+    if (this.lit("?h(") || this.lit("?sh(") || this.lit("??h(")) {
+      const depth = rest.startsWith("?sh") ? 2 : rest.startsWith("??h") ? 3 : 1;
       const name = this.qid();
       this.expect(",");
       const head = this.qid();
       this.expect(")");
-      return { kind: "blank", name, head, sequence: false };
+      return { kind: "blank", name, head, depth: depth as 1 | 2 | 3 };
+    }
+    if (this.lit("?s")) {
+      return { kind: "blank", name: this.qid(), head: null, depth: 2 };
     }
     if (this.lit("??")) {
-      return { kind: "blank", name: this.qid(), head: null, sequence: true };
+      return { kind: "blank", name: this.qid(), head: null, depth: 3 };
     }
     if (this.lit("?")) {
-      return { kind: "blank", name: this.qid(), head: null, sequence: false };
+      return { kind: "blank", name: this.qid(), head: null, depth: 1 };
     }
     throw new Error(
       `cannot parse core term at ${this.pos}: ${rest.slice(0, 40)}`,
@@ -127,7 +131,7 @@ function fmt(core: Core, parentPrec: number): string {
       return `"${core.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     case "blank": {
       const shownName = core.name.startsWith("$b") ? "" : core.name;
-      const bar = core.sequence ? "___" : "_";
+      const bar = "_".repeat(core.depth);
       return `${shownName}${bar}${core.head ?? ""}`;
     }
     case "apply": {
