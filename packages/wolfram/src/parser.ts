@@ -235,6 +235,15 @@ class Parser {
         lhs = { kind: "apply", head: sym("Function"), args: [lhs] };
         continue;
       }
+      // Part: expr[[...]]
+      if (t.text === "[" && this.tokens[this.pos + 1]?.text === "[") {
+        this.next();
+        this.next();
+        const args = this.parseArgs("]");
+        this.expect("]");
+        lhs = { kind: "apply", head: sym("Part"), args: [lhs, ...args] };
+        continue;
+      }
       // application f[...]
       if (t.text === "[") {
         this.next();

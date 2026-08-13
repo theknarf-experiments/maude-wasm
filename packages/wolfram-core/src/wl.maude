@@ -32,6 +32,7 @@ fmod WL-SYNTAX is
   op ?_ : Qid -> Expr [ctor prec 5] .      *** Blank[q]  (q_)
   op ??_ : Qid -> Expr [ctor prec 5] .     *** BlankNullSequence[q]  (q___)
   op ?h : Qid Qid -> Expr [ctor] .         *** Blank[q, head]  (q_head)
+  op unw : Qid Expr -> Expr [ctor] .       *** in-flight Return/Break/Throw
 endfm
 
 fmod WL-BINDINGS is
@@ -77,6 +78,7 @@ fmod WL-ORDER is
   eq rank(?h(Q, Q2)) = 3 .
   eq rank(?? Q) = 4 .
   eq rank(ap(H, A)) = 5 .
+  eq rank(unw(Q, E)) = 6 .
 
   op ltE : Expr Expr -> Bool .
   op ltA : ArgList ArgList -> Bool .
@@ -254,7 +256,7 @@ fmod WL-EVAL is
    && at('Module, 'HoldAll) && at('With, 'HoldAll) && at('Which, 'HoldAll)
    && at('Switch, 'HoldRest) && at('For, 'HoldAll)
    && at('Unset, 'HoldAll) && at('Clear, 'HoldAll)
-   && at('Block, 'HoldAll) .
+   && at('Block, 'HoldAll) && at('Catch, 'HoldAll) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -388,7 +390,7 @@ fmod WL-EVAL is
   var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
   var Ini Inc Body : Expr . var C : Constant . var NeTL : NeTermList .
   var NZ : NzNat . var At2 : Attrs . var Ds2 : Defs .
-  var NZI : NzInt . var NZN : NzNat .
+  var NZI : NzInt . var NZN : NzNat . var RR : R .
 
   *** ---------------------------------------------------- evaluator
   op ev : St Expr -> R .
@@ -411,8 +413,21 @@ fmod WL-EVAL is
   eq isSpecial(s('CompoundExpression)) = true .
   eq isSpecial(E) = false [owise] .
 
+  op isUnw : ArgList -> Bool .
+  eq isUnw(unw(Q, E)) = true .
+  eq isUnw(A) = false [owise] .
+  op isPropagate : ArgList -> Bool .
+  eq isPropagate(unw('Return, E)) = true .
+  eq isPropagate(unw('Throw, E)) = true .
+  eq isPropagate(A) = false [owise] .
+  *** function-application boundary: absorb Return
+  op retB : R -> R .
+  eq retB(r(S, unw('Return, E))) = r(S, E) .
+  eq retB(RR) = RR [owise] .
+
   *** atoms and inert forms
   eq ev(S, RA) = r(S, RA) .
+  eq ev(S, unw(Q, E)) = r(S, unw(Q, E)) .
   eq ev(S, str(Str)) = r(S, str(Str)) .
   eq ev(S, s(Q)) = apply(S, s(Q)) .
   eq ev(S, ? Q) = r(S, ? Q) .
@@ -425,6 +440,7 @@ fmod WL-EVAL is
   eq ifBr(S, s('True), E :: Rest) = ev(S, E) .
   eq ifBr(S, s('False), E :: E1 :: Rest) = ev(S, E1) .
   eq ifBr(S, s('False), E) = r(S, s('Null)) .
+  eq ifBr(S, unw(Q, E), Rest) = r(S, unw(Q, E)) .
   eq ifBr(S, V, Rest) = r(S, ap(s('If), V :: Rest)) [owise] .
 
   eq ev(S, ap(s('SetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
@@ -436,15 +452,22 @@ fmod WL-EVAL is
 
   eq ev(S, ap(s('CompoundExpression), A)) = evSeq(S, A, s('Null)) .
   eq evSeq(S, nilA, Last) = r(S, Last) .
-  ceq evSeq(S0, E :: A, Last) = evSeq(S1, A, V)
+  ceq evSeq(S0, E :: A, Last) = evSeqK(S1, V, A)
     if r(S1, V) := ev(S0, E) .
+  op evSeqK : St Expr ArgList -> R .
+  ceq evSeqK(S, V, A) = r(S, V) if isUnw(V) .
+  ceq evSeqK(S0, V, A) = evSeq(S0, A, V) if not isUnw(V) .
 
   *** generic application: evaluate head, args per Hold*, splice
   *** Sequence, flatten (Flat), canonically order (Orderless), apply
-  ceq ev(S0, ap(H, A)) = apply(S2, norm(S2, ap(HV, AV)))
+  ceq ev(S0, ap(H, A)) = evAp(S2, HV, AV)
     if not isSpecial(H) /\
        r(S1, HV) := ev(S0, H) /\
        r(S2, AV) := evArgs(S1, HV, A) .
+  op evAp : St Expr ArgList -> R .
+  ceq evAp(S, HV, AV) = r(S, HV) if isUnw(HV) .
+  ceq evAp(S, HV, AV) = r(S, AV) if isUnw(AV) .
+  eq evAp(S, HV, AV) = apply(S, norm(S, ap(HV, AV))) [owise] .
 
   eq evArgs(S, HV, nilA) = r(S, nilA) .
   ceq evArgs(S, HV, A) = evHeld(S, A)
@@ -461,12 +484,20 @@ fmod WL-EVAL is
 
   *** held tail helper: first arg evaluated, rest held
   op evHeldTail : St Expr ArgList -> R .
-  ceq evHeldTail(S0, E, A) = r(S2, V :: AV)
-    if r(S1, V) := ev(S0, E) /\ r(S2, AV) := evHeld(S1, A) .
+  ceq evHeldTail(S0, E, A) = evHTK(S1, V, A)
+    if r(S1, V) := ev(S0, E) .
+  op evHTK : St Expr ArgList -> R .
+  ceq evHTK(S, V, A) = r(S, V) if isUnw(V) .
+  ceq evHTK(S0, V, A) = r(S1, V :: AV)
+    if not isUnw(V) /\ r(S1, AV) := evHeld(S0, A) .
 
   eq evAll(S, nilA) = r(S, nilA) .
-  ceq evAll(S0, E :: A) = r(S2, V :: AV)
-    if r(S1, V) := ev(S0, E) /\ r(S2, AV) := evAll(S1, A) .
+  ceq evAll(S0, E :: A) = evAllK(S1, V, A)
+    if r(S1, V) := ev(S0, E) .
+  op evAllK : St Expr ArgList -> R .
+  ceq evAllK(S, V, A) = r(S, V) if isUnw(V) .
+  ceq evAllK(S0, V, A) = r(S1, V :: AV)
+    if not isUnw(V) /\ r(S1, AV) := evAll(S0, A) .
 
   *** held args still honor Evaluate[...]
   op evHeld1 : St Expr -> R .
@@ -513,10 +544,10 @@ fmod WL-EVAL is
     if Sb := metaMatch(MOD, P, UM, nil, 0) /\
        r(S1, V) := ev(st(Ds0, At, N), sbE(Cnd, s2b(Sb))) .
   op condBr : St Expr Expr Term Defs Expr -> R .
-  eq condBr(S, s('True), Rh, UM, Ds, E) = ev(S, Rh) .
+  eq condBr(S, s('True), Rh, UM, Ds, E) = retB(ev(S, Rh)) .
   eq condBr(S, V, Rh, UM, Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
   ceq tryDefs(st(Ds0, At, s N), UM, d(P, Rh) | Ds, E)
-    = ev(st(Ds0, At, N), sbE(Rh, s2b(Sb)))
+    = retB(ev(st(Ds0, At, N), sbE(Rh, s2b(Sb))))
     if not isCondRhs(Rh) /\ Sb := metaMatch(MOD, P, UM, nil, 0) .
   op isCondRhs : Expr -> Bool .
   eq isCondRhs(ap(s('Condition), A)) = true .
@@ -678,8 +709,8 @@ fmod WL-EVAL is
   eq varsB(nilA, A) = noBnds .
   eq varsB(s(Q) :: A1, E :: A) = bnd(Q, E) & varsB(A1, A) .
   eq builtin(S, ap(ap(s('Function), ap(s('List), A1) :: E), A))
-    = ev(S, sbE(E, varsB(A1, A))) .
-  ceq builtin(S, ap(ap(s('Function), E), A)) = ev(S, slotE(E, A))
+    = retB(ev(S, sbE(E, varsB(A1, A)))) .
+  ceq builtin(S, ap(ap(s('Function), E), A)) = retB(ev(S, slotE(E, A)))
     if not isListFn(E) .
   op isListFn : ArgList -> Bool .
   eq isListFn(ap(s('List), A) :: E) = true .
@@ -708,14 +739,24 @@ fmod WL-EVAL is
     = if V == s('True) then whileNext(S1, Cnd, A) else r(S1, s('Null)) fi
     if r(S1, V) := ev(st(Ds, At, N), Cnd) .
   op whileNext : St Expr ArgList -> R .
-  ceq whileNext(S0, Cnd, A) = whileB(S1, Cnd, A)
+  ceq whileNext(S0, Cnd, A) = whileK(S1, V, Cnd, A)
     if r(S1, V) := evSeq(S0, A, s('Null)) .
+  op whileK : St Expr Expr ArgList -> R .
+  eq whileK(S, unw('Break, E), Cnd, A) = r(S, s('Null)) .
+  eq whileK(S, unw('Continue, E), Cnd, A) = whileB(S, Cnd, A) .
+  ceq whileK(S, V, Cnd, A) = r(S, V) if isPropagate(V) .
+  ceq whileK(S, V, Cnd, A) = whileB(S, Cnd, A) if not isUnw(V) .
   eq builtin(S, ap(s('While), Cnd :: A)) = whileB(S, Cnd, A) .
 
   op doIter : St Expr Qid Int Int -> R .
-  ceq doIter(S0, E, Q, I, J) = doIter(S1, E, Q, I + 1, J)
+  ceq doIter(S0, E, Q, I, J) = doK(S1, V, E, Q, I, J)
     if I <= J /\ r(S1, V) := ev(S0, sbE(E, bnd(Q, I))) .
   ceq doIter(S, E, Q, I, J) = r(S, s('Null)) if I > J .
+  op doK : St Expr Expr Qid Int Int -> R .
+  eq doK(S, unw('Break, E1), E, Q, I, J) = r(S, s('Null)) .
+  eq doK(S, unw('Continue, E1), E, Q, I, J) = doIter(S, E, Q, I + 1, J) .
+  ceq doK(S, V, E, Q, I, J) = r(S, V) if isPropagate(V) .
+  ceq doK(S, V, E, Q, I, J) = doIter(S, E, Q, I + 1, J) if not isUnw(V) .
   eq builtin(S, ap(s('Do), E :: ap(s('List), s(Q) :: J))) = doIter(S, E, Q, 1, J) .
   ceq builtin(S0, ap(s('Do), E :: I)) = doN(S0, E, I) if I >= 0 .
   op doN : St Expr Nat -> R .
@@ -936,6 +977,54 @@ fmod WL-EVAL is
     if r(S1, V) := ev(S0, ap(H, E)) .
   eq builtin(S, ap(s('FixedPoint), H :: E)) = fixB(S, H, E, 10000) .
 
+  *** non-local exits
+  eq builtin(S, ap(s('Return), nilA)) = r(S, unw('Return, s('Null))) .
+  eq builtin(S, ap(s('Return), E)) = r(S, unw('Return, E)) .
+  eq builtin(S, ap(s('Break), nilA)) = r(S, unw('Break, s('Null))) .
+  eq builtin(S, ap(s('Continue), nilA)) = r(S, unw('Continue, s('Null))) .
+  eq builtin(S, ap(s('Throw), E)) = r(S, unw('Throw, E)) .
+  op catchB : St ArgList -> R .
+  eq catchB(S, unw('Throw, E)) = r(S, E) .
+  eq catchB(S, A) = r(S, A) [owise] .
+  ceq builtin(S0, ap(s('Catch), E)) = catchB(S1, V)
+    if r(S1, V) := ev(S0, E) .
+
+  *** everyday numerics and strings
+  eq builtin(S, ap(s('Unequal), RA :: RB)) = r(S, bool2wl(RA =/= RB)) .
+  ceq builtin(S, ap(s('Unequal), E :: E1)) = r(S, s('False)) if E == E1 .
+  eq builtin(S, ap(s('SameQ), E :: E1)) = r(S, bool2wl(E == E1)) .
+  eq builtin(S, ap(s('Mod), I :: J)) = r(S, ((I rem J) + J) rem J) .
+  eq builtin(S, ap(s('Quotient), I :: J))
+    = r(S, (I + -(((I rem J) + J) rem J)) quo J) .
+  eq builtin(S, ap(s('GCD), I :: J)) = r(S, gcd(I, J)) .
+  op factN : Nat -> NzNat .
+  eq factN(0) = 1 .
+  ceq factN(s N) = (s N) * factN(N) if true .
+  ceq builtin(S, ap(s('Factorial), N)) = r(S, factN(N)) if true .
+  ceq builtin(S, ap(s('Binomial), N :: N2))
+    = r(S, factN(N) quo (factN(N2) * factN(sd(N, N2)))) if N2 <= N .
+  eq builtin(S, ap(s('Abs), RA)) = r(S, abs(RA)) .
+  op allRat : ArgList -> Bool .
+  eq allRat(nilA) = true .
+  eq allRat(RA :: A) = allRat(A) .
+  eq allRat(A) = false [owise] .
+  op minA : ArgList -> Rat .
+  eq minA(RA) = RA .
+  eq minA(RA :: RB :: A) = minA(min(RA, RB) :: A) .
+  op maxA : ArgList -> Rat .
+  eq maxA(RA) = RA .
+  eq maxA(RA :: RB :: A) = maxA(max(RA, RB) :: A) .
+  ceq builtin(S, ap(s('Min), A)) = r(S, minA(A)) if allRat(A) /\ lenA(A) >= 1 .
+  ceq builtin(S, ap(s('Max), A)) = r(S, maxA(A)) if allRat(A) /\ lenA(A) >= 1 .
+  op joinStr : ArgList ~> String .
+  eq joinStr(nilA) = "" .
+  eq joinStr(str(Str) :: A) = Str + joinStr(A) .
+  ceq builtin(S, ap(s('StringJoin), A)) = r(S, str(Str))
+    if Str := joinStr(A) .
+  eq builtin(S, ap(s('StringLength), str(Str))) = r(S, length(Str)) .
+  eq builtin(S, ap(s('ToString), I)) = r(S, str(string(I, 10))) .
+  eq builtin(S, ap(s('ToString), str(Str))) = r(S, str(Str)) .
+
   *** anything else is inert
   eq builtin(S, E) = r(S, E) [owise] .
 
@@ -945,8 +1034,11 @@ fmod WL-EVAL is
   op initialState : -> St .
   eq initialState = st(noD, defaultAttrs, initialFuel) .
 
+  op unwrapTop : ArgList -> ArgList .
+  eq unwrapTop(unw(Q, E)) = E .
+  eq unwrapTop(A) = A [owise] .
   op run : ArgList -> Expr .
-  ceq run(A) = V if r(S, V) := evSeq(initialState, A, s('Null)) .
+  ceq run(A) = unwrapTop(V) if r(S, V) := evSeq(initialState, A, s('Null)) .
 
   op runAll : ArgList -> ArgList .
   eq runAll(A) = runAll2(initialState, A) .

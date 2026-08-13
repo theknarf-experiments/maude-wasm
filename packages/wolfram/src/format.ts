@@ -132,6 +132,10 @@ function fmt(core: Core, parentPrec: number): string {
     }
     case "apply": {
       const headSym = core.head.kind === "symbol" ? core.head.name : null;
+      if (headSym === "Part" && core.args.length >= 2) {
+        const [subject, ...idx] = core.args;
+        return `${fmt(subject, 200)}[[${idx.map((a) => fmt(a, 0)).join(", ")}]]`;
+      }
       if (headSym === "List") {
         return `{${core.args.map((a) => fmt(a, 0)).join(", ")}}`;
       }

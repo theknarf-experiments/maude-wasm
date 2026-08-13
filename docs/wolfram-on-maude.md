@@ -225,8 +225,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       (fuel-bounded), `Do` (count + single-iterator forms), plus
       iteration combinators `Table`/`Nest`/`NestList`/`Fold`.
       *Also done:* `For`, `Switch` (via MatchQ), `Which`.
-      *Pending:* `Return`, `Break`, `Continue` (need non-local exit —
-      likely an interrupt-style payload threaded through R).
+      *Also done:* `Return`/`Break`/`Continue` and `Throw`/`Catch` via an
+      `unw(kind, payload)` expression marker propagated
+      continuation-style through argument evaluation and sequencing;
+      rule application and `Function` boundaries absorb `Return`, loops
+      absorb `Break`/`Continue`, `Catch` absorbs `Throw`. Hard-won
+      lesson recorded: guard-paired ceqs whose conditions both call
+      `ev(...)` make Maude re-run the whole sub-evaluation when the
+      first guard fails — exponential blowup on recursion; dispatch on
+      the evaluated value in a helper op instead.
 - [ ] **3.4 `Throw`/`Catch`** with tags — likely the strategy language
       or an explicit evaluator continuation encoding; pick after a
       spike.
@@ -247,17 +254,18 @@ conformance table in `test/wl.test.ts` covers each item below.
       `^` wants a Nat exponent), `Divide`, `Numerator`/`Denominator`
       (by matching the canonical `NzInt / NzNat` form), rational
       comparisons. Division works through the parser form
-      `Times[a, Power[b, -1]]`. *Pending:* `Complex`, `GCD`,
-      `Factorial`, `Binomial`.
+      `Times[a, Power[b, -1]]`. *Also done:* `GCD`, `Factorial`, `Binomial`, `Abs`, `Min`/`Max`,
+      `Mod`/`Quotient` (WL floor-division sign semantics), `Unequal`,
+      `SameQ`. *Pending:* `Complex`.
 - [ ] **4.2 Machine reals** on Maude `FLOAT`; numeric contagion rules
       (exact + inexact → inexact).
 - [ ] **4.3 Arbitrary-precision reals.** Scaled-integer bigfloats with
       WL-style precision tracking (`N[expr, 50]`, `Precision`). This is
       the largest pure-library item in the plan; consider deferring
       behind a "machine precision only" milestone.
-- [ ] **4.4 Strings**: the `String` head over Maude `STRING`;
-      `StringJoin`, `StringLength`, `Characters`, `StringTake`; decide
-      how far to chase `StringExpression` patterns (likely: not far).
+- [~] **4.4 Strings.** *Done:* `StringJoin`, `StringLength`,
+      `ToString` (integers/strings). *Pending:* `Characters`,
+      `StringTake`, `StringExpression` (likely: not far).
 - [ ] **4.5 `Association`** (as ACU map term), `Keys`, `Values`,
       `Lookup`, `KeyDropFrom` etc. — modern WL code is unusable
       without it.

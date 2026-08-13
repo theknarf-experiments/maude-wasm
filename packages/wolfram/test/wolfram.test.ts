@@ -58,6 +58,17 @@ const cases: Array<[string, string]> = [
   ['Cases[{1, a, 2, "x", 3}, _Integer]', "{1, 2, 3}"],
   ['h[Except[0]] := "nonzero"; {h[7], h[0]}', '{"nonzero", h[0]}'],
   ["expand[n_] := n * (x + 1); expand[3]", "3*(1 + x)"],
+  ["{10, 20, 30}[[2]]", "20"],
+  [
+    'f[x_] := (If[x > 10, Return["big"]]; "small"); {f[20], f[1]}',
+    '{"big", "small"}',
+  ],
+  ["i = 0; While[True, i = i + 1; If[i >= 3, Break[]]]; i", "3"],
+  ["Catch[Do[If[k > 3, Throw[k]], {k, 10}]]", "4"],
+  [
+    '{Factorial[5], Mod[-7, 3], Quotient[-7, 3], Binomial[5, 2], Min[3, 1/2, 2], StringJoin["foo", "bar"], 3 != 4}',
+    '{120, 2, -3, 10, 1/2, "foobar", True}',
+  ],
 ];
 
 describe("end-to-end Wolfram notation", () => {
