@@ -76,6 +76,13 @@ const cases: Array<[string, string]> = [
   ["Integrate[x^2 + 3*x + 5, x]", "1/3*x^3 + 3/2*x^2 + 5*x"],
   ["D[Integrate[x^2, x], x]", "x^2"],
   ["Integrate[7, x]", "7*x"],
+  ["2*x + 3*x", "5*x"],
+  ["x*y + -1*x*y", "0"],
+  ["x^2 * x^3", "x^5"],
+  ["Expand[(x + 1)^3]", "1 + 3*x + 3*x^2 + x^3"],
+  ["Expand[(x + y)*(x - y)]", "x^2 + -1*y^2"],
+  ["D[Sin[x^2], x]", "2*x*Cos[x^2]"],
+  ["D[Exp[2*x] + Sin[x]*Cos[x], x]", "Cos[x]^2 + -1*Sin[x]^2 + 2*Exp[2*x]"],
 ];
 
 describe("end-to-end Wolfram notation", () => {

@@ -15,5 +15,22 @@ Integrate[x_, x_] := x^2 * (1/2);
 Integrate[c_, x_] := c * x /; FreeQ[c, x];
 Integrate[x_^n_, x_] := x^(n + 1) * (1/(n + 1)) /; FreeQ[n, x] && n != -1;
 Integrate[c_ * f__, x_] := c * Integrate[Times[f], x] /; FreeQ[c, x];
-Integrate[f_ + r__, x_] := Integrate[f, x] + Integrate[Plus[r], x]
+Integrate[f_ + r__, x_] := Integrate[f, x] + Integrate[Plus[r], x];
+
+(* chain rules for named functions *)
+D[Sin[u_], x_] := Cos[u] * D[u, x];
+D[Cos[u_], x_] := -Sin[u] * D[u, x];
+D[Exp[u_], x_] := Exp[u] * D[u, x];
+D[Log[u_], x_] := D[u, x] / u;
+
+(* polynomial expansion *)
+Expand[a_ + r__] := Expand[a] + Expand[Plus[r]];
+Expand[a_ * r__] := dist[Expand[a], Expand[Times[r]]];
+Expand[a_^n_] := expandPow[Expand[a], n] /; IntegerQ[n] && n > 1;
+Expand[e_] := e;
+dist[a_ + b__, c_] := dist[a, c] + dist[Plus[b], c];
+dist[a_, b_ + c__] := dist[a, b] + dist[a, Plus[c]];
+dist[a_, b_] := a * b;
+expandPow[a_, 1] := a;
+expandPow[a_, n_] := dist[a, expandPow[a, n + -1]]
 `;

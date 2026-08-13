@@ -566,15 +566,94 @@ fmod WL-EVAL is
 
   *** Plus/Times: args arrive canonically ordered (ints first); fold the
   *** numeric prefix, keep the symbolic tail
-  eq builtin(S, ap(s('Plus), nilA)) = r(S, 0) .
-  eq builtin(S, ap(s('Plus), E)) = r(S, E) .
-  eq builtin(S, ap(s('Plus), RA :: RB :: A)) = builtin(S, ap(s('Plus), (RA + RB) :: A)) .
-  ceq builtin(S, ap(s('Plus), 0 :: A)) = builtin(S, ap(s('Plus), A)) if lenA(A) >= 1 .
-  eq builtin(S, ap(s('Times), nilA)) = r(S, 1) .
-  eq builtin(S, ap(s('Times), E)) = r(S, E) .
-  eq builtin(S, ap(s('Times), RA :: RB :: A)) = builtin(S, ap(s('Times), (RA * RB) :: A)) .
-  ceq builtin(S, ap(s('Times), 1 :: A)) = builtin(S, ap(s('Times), A)) if lenA(A) >= 1 .
-  ceq builtin(S, ap(s('Times), 0 :: A)) = r(S, 0) if lenA(A) >= 1 .
+  *** Plus collects like terms by symbolic part (2x + 3x -> 5x); bare
+  *** rationals are the empty-part group, so numeric folding falls out
+  op coefOf : Expr -> Rat .
+  op restOf : Expr -> ArgList .
+  eq coefOf(RA) = RA .
+  ceq coefOf(ap(s('Times), RA :: A)) = RA if lenA(A) >= 1 .
+  eq coefOf(E) = 1 [owise] .
+  eq restOf(RA) = nilA .
+  ceq restOf(ap(s('Times), RA :: A)) = A if lenA(A) >= 1 .
+  ceq restOf(ap(s('Times), E :: A)) = E :: A
+    if not (E :: Rat) /\ lenA(A) >= 1 .
+  eq restOf(E) = E [owise] .
+  op mkTerm : Rat ArgList -> Expr .
+  eq mkTerm(RA, nilA) = RA .
+  ceq mkTerm(RA, A) = 0 if RA == 0 /\ lenA(A) >= 1 .
+  ceq mkTerm(RA, E) = E if RA == 1 .
+  ceq mkTerm(RA, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if RA == 1 .
+  ceq mkTerm(RA, A) = ap(s('Times), RA :: A)
+    if RA =/= 0 /\ RA =/= 1 /\ lenA(A) >= 1 .
+  op sumCo : ArgList ArgList -> Rat .
+  eq sumCo(nilA, A1) = 0 .
+  eq sumCo(E :: A, A1)
+    = if restOf(E) == A1 then coefOf(E) + sumCo(A, A1) else sumCo(A, A1) fi .
+  op dropCo : ArgList ArgList -> ArgList .
+  eq dropCo(nilA, A1) = nilA .
+  eq dropCo(E :: A, A1)
+    = if restOf(E) == A1 then dropCo(A, A1) else E :: dropCo(A, A1) fi .
+  op collectP : ArgList -> ArgList .
+  eq collectP(nilA) = nilA .
+  eq collectP(E :: A)
+    = mkTerm(coefOf(E) + sumCo(A, restOf(E)), restOf(E))
+      :: collectP(dropCo(A, restOf(E))) .
+  op dropZeros : ArgList -> ArgList .
+  eq dropZeros(nilA) = nilA .
+  eq dropZeros(0 :: A) = dropZeros(A) .
+  eq dropZeros(E :: A) = E :: dropZeros(A) [owise] .
+  op plusOut : ArgList -> Expr .
+  eq plusOut(nilA) = 0 .
+  eq plusOut(E) = E .
+  ceq plusOut(E :: E1 :: A) = ap(s('Plus), E :: E1 :: A) if true .
+  eq builtin(S, ap(s('Plus), A)) = r(S, plusOut(dropZeros(collectP(A)))) .
+
+  *** Times multiplies the rational prefix and collects powers by base
+  *** so x * x -> x^2; symbolic exponents stay opaque
+  op baseOf : Expr -> Expr .
+  op expOf : Expr -> Rat .
+  ceq baseOf(ap(s('Power), E :: RA)) = E if true .
+  eq baseOf(E) = E [owise] .
+  ceq expOf(ap(s('Power), E :: RA)) = RA if true .
+  eq expOf(E) = 1 [owise] .
+  op mkFac : Expr Rat -> Expr .
+  eq mkFac(E, 0) = 1 .
+  eq mkFac(E, 1) = E .
+  ceq mkFac(E, RA) = ap(s('Power), E :: RA) if RA =/= 0 /\ RA =/= 1 .
+  op sumEx : ArgList Expr -> Rat .
+  eq sumEx(nilA, E1) = 0 .
+  eq sumEx(E :: A, E1)
+    = if baseOf(E) == E1 then expOf(E) + sumEx(A, E1) else sumEx(A, E1) fi .
+  op dropEx : ArgList Expr -> ArgList .
+  eq dropEx(nilA, E1) = nilA .
+  eq dropEx(E :: A, E1)
+    = if baseOf(E) == E1 then dropEx(A, E1) else E :: dropEx(A, E1) fi .
+  op collectF : ArgList -> ArgList .
+  eq collectF(nilA) = nilA .
+  eq collectF(E :: A)
+    = mkFac(baseOf(E), expOf(E) + sumEx(A, baseOf(E)))
+      :: collectF(dropEx(A, baseOf(E))) .
+  op dropOnes : ArgList -> ArgList .
+  eq dropOnes(nilA) = nilA .
+  eq dropOnes(1 :: A) = dropOnes(A) .
+  eq dropOnes(E :: A) = E :: dropOnes(A) [owise] .
+  op prodRat : ArgList -> Rat .
+  eq prodRat(nilA) = 1 .
+  eq prodRat(RA :: A) = RA * prodRat(A) .
+  eq prodRat(E :: A) = prodRat(A) [owise] .
+  op nonRatA : ArgList -> ArgList .
+  eq nonRatA(nilA) = nilA .
+  eq nonRatA(RA :: A) = nonRatA(A) .
+  eq nonRatA(E :: A) = E :: nonRatA(A) [owise] .
+  op timesOut : Rat ArgList -> Expr .
+  eq timesOut(RA, nilA) = RA .
+  ceq timesOut(RA, A) = 0 if RA == 0 /\ lenA(A) >= 1 .
+  ceq timesOut(RA, E) = E if RA == 1 .
+  ceq timesOut(RA, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if RA == 1 .
+  ceq timesOut(RA, A) = ap(s('Times), RA :: A)
+    if RA =/= 0 /\ RA =/= 1 /\ lenA(A) >= 1 .
+  eq builtin(S, ap(s('Times), A))
+    = r(S, timesOut(prodRat(A), dropOnes(collectF(nonRatA(A))))) .
 
   ceq builtin(S, ap(s('Power), RA :: J)) = r(S, RA ^ J) if J >= 0 .
   eq builtin(S, ap(s('Power), E :: 0)) = r(S, 1) [owise] .

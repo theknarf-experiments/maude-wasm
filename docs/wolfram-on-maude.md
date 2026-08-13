@@ -281,10 +281,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       functions, `GroupBy`, `Riffle`, `Tuples`, multi-iterator
       `Table`, nested `Part` specs.
 - [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).
-- [~] **5.3 Symbolic basics.** *Done:* `D` (differentiation) as five
-      rewrite rules in the bootstrap library — sum/product/power/chain
-      basics with `FreeQ` constants; `D[Integrate[x^2, x], x] == x^2`
-      holds. *Pending:* `Expand`, `Together`, `Collect`, `Coefficient`.
+- [~] **5.3 Symbolic basics.** *Done:* `D` (sum/product/power rules,
+      chain rules for Sin/Cos/Exp/Log) and `Expand` (distribution +
+      integer powers) in the bootstrap library;
+      `D[Integrate[x^2, x], x] == x^2` holds and
+      `Expand[(x+y)*(x-y)]` cancels to `x^2 - y^2`. The engine's Plus
+      now collects like terms by symbolic part (2x + 3x -> 5x, exact
+      rational coefficients) and Times collects powers by base
+      (x * x^2 -> x^3) — WL's automatic arithmetic canonicalization.
+      *Pending:* `Together`, `Collect`, `Coefficient`.
 - [x] **5.4 Bootstrap library**: `packages/wolfram/src/stdlib.ts`
       holds WL-notation definitions parsed and evaluated at session
       start (evaluateWL and the notebook worker both prepend it); the
