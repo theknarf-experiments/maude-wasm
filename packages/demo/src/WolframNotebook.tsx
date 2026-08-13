@@ -9,18 +9,21 @@ import { wlLanguage } from "./wl-language";
 const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
 interface Cell {
+  id: number;
   input: string;
   output: string | null;
   error: string | null;
 }
 
+let nextCellId = 1;
+function newCell(input: string): Cell {
+  return { id: nextCellId++, input, output: null, error: null };
+}
+
 const INITIAL: Cell[] = [
-  {
-    input:
-      "fib[0] = 0; fib[1] = 1;\nfib[n_] := fib[n] = fib[n - 1] + fib[n - 2];\nfib[30]",
-    output: null,
-    error: null,
-  },
+  newCell(
+    "fib[0] = 0; fib[1] = 1;\nfib[n_] := fib[n] = fib[n - 1] + fib[n - 2];\nfib[30]",
+  ),
 ];
 
 /**
@@ -75,10 +78,7 @@ export function WolframNotebook({ maude }: { maude: Runner }) {
         replays the cells above it). Shift-Enter evaluates.
       </p>
       {cells.map((cell, i) => (
-        <div
-          className="cell"
-          key={`cell-${i /* index identity: cells are positional */}`}
-        >
+        <div className="cell" key={cell.id}>
           <div className="cell-label">In[{i + 1}]:=</div>
           <div className="cell-body">
             <CodeMirror
@@ -138,7 +138,7 @@ export function WolframNotebook({ maude }: { maude: Runner }) {
         type="button"
         className="add-cell"
         onClick={() =>
-          setCells((cs) => [...cs, { input: "", output: null, error: null }])
+          setCells((cs) => [...cs, newCell("")])
         }
       >
         + Add cell
