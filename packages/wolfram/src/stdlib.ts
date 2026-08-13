@@ -48,6 +48,11 @@ coefSum[t_, x_, n_] := coefFree[t * x^(-1 * n), x];
 coefFree[u_, x_] := u /; FreeQ[u, x];
 coefFree[u_, x_] := 0;
 
+(* list utilities *)
+Riffle[{}, s_] := {};
+Riffle[{x_}, s_] := {x};
+Riffle[{x_, r__}, s_] := Join[{x, s}, Riffle[{r}, s]];
+
 (* special values *)
 Sin[0] = 0; Cos[0] = 1; Exp[0] = 1; Log[1] = 0
 `;

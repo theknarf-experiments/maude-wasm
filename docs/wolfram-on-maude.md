@@ -290,11 +290,19 @@ conformance table in `test/wl.test.ts` covers each item below.
       `Rest`, `Total`, `Fold`, `Nest`, `NestList`, `Select`, `Flatten`
       (all levels), `Join`, `Table` (single iterator). *Also done:* `FoldList`,
       `FixedPoint`, `Part` (level 1 + Part 0 = Head), `Last`, `Sort`
-      (canonical order), `Partition`, `Transpose`. *Pending:*
-      `MapThread`, `Thread`, `NestWhile`, `Sort` with ordering
-      functions, `GroupBy`, `Riffle`, `Tuples`, multi-iterator
-      `Table`, nested `Part` specs.
-- [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).
+      (canonical order), `Partition`, `Transpose`. *Also done:*
+      `Thread`, `MapThread`, `NestWhile` (bounded), `Sort` with an
+      ordering function (stateful insertion sort), `Riffle` (stdlib),
+      `Tuples` (both forms), multi-iterator and `{i, min, max}`
+      `Table`/`Do`, nested `Part` specs (`m[[2, 1]]`), and
+      `Function[x, body]` single-variable functions. *Pending:*
+      `GroupBy` (wants Association, 4.5).
+- [x] **5.2 `Listable` threading** over lists and mixed list/scalar
+      arguments: a hook before dispatch threads any Listable head
+      elementwise, broadcasting scalars; mismatched lengths stay
+      inert. Plus/Times/Power/Abs/Sin/Cos/Exp/Log/Factorial/Mod/
+      Quotient/GCD/EvenQ/OddQ ship Listable; `Thread` reuses the same
+      row machinery.
 - [~] **5.3 Symbolic basics.** *Done:* `D` (sum/product/power rules,
       chain rules for Sin/Cos/Exp/Log) and `Expand` (distribution +
       integer powers) in the bootstrap library;

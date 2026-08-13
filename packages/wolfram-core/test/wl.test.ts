@@ -115,7 +115,7 @@ const cases: Array<[string, string, string]> = [
   [
     "Attributes introspection",
     "ap(s('Attributes), s('Plus))",
-    "ap(s('List), s('Flat) :: s('OneIdentity) :: s('Orderless))",
+    "ap(s('List), s('Flat) :: s('Listable) :: s('OneIdentity) :: s('Orderless))",
   ],
   [
     "ClearAttributes",

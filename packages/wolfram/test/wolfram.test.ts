@@ -110,6 +110,22 @@ const cases: Array<[string, string]> = [
   ['MatchQ[{1, 2}, {__Integer}] && !MatchQ[{1, "a"}, {__Integer}]', "True"],
   // MatchQ evaluates hoisted pattern conditions
   ["MatchQ[4, x_ /; x > 3] && !MatchQ[2, x_ /; x > 3]", "True"],
+  // Listable threading with scalar broadcast
+  ["{1, 2, 3} + 10", "{11, 12, 13}"],
+  ["{1, 2} * {3, 4}", "{3, 8}"],
+  ["Sin[{0, 0}]", "{0, 0}"],
+  ["EvenQ[{1, 2}]", "{False, True}"],
+  ["Thread[f[{1, 2}, 9]]", "{f[1, 9], f[2, 9]}"],
+  ["MapThread[Plus, {{1, 2}, {3, 4}}]", "{4, 6}"],
+  // list utilities
+  ["NestWhile[Function[x, x / 2], 128, EvenQ]", "1"],
+  ["Sort[{3, 1, 2}, Greater]", "{3, 2, 1}"],
+  ["Riffle[{1, 2, 3}, 0]", "{1, 0, 2, 0, 3}"],
+  ["Tuples[{0, 1}, 2]", "{{0, 0}, {0, 1}, {1, 0}, {1, 1}}"],
+  ["Table[i * j, {i, 2}, {j, 3}]", "{{1, 2, 3}, {2, 4, 6}}"],
+  ["Table[i, {i, 3, 5}]", "{3, 4, 5}"],
+  ["{{1, 2}, {3, 4}}[[2, 1]]", "3"],
+  ["Total[{{1, 2}, {3, 4}}]", "{4, 6}"],
 ];
 
 describe("end-to-end Wolfram notation", () => {

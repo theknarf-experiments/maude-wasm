@@ -276,7 +276,14 @@ fmod WL-EVAL is
    && at('Module, 'HoldAll) && at('With, 'HoldAll) && at('Which, 'HoldAll)
    && at('Switch, 'HoldRest) && at('For, 'HoldAll)
    && at('Unset, 'HoldAll) && at('Clear, 'HoldAll)
-   && at('Block, 'HoldAll) && at('Catch, 'HoldAll) .
+   && at('Block, 'HoldAll) && at('Catch, 'HoldAll)
+   && at('Plus, 'Listable) && at('Times, 'Listable)
+   && at('Power, 'Listable) && at('Abs, 'Listable)
+   && at('Sin, 'Listable) && at('Cos, 'Listable)
+   && at('Exp, 'Listable) && at('Log, 'Listable)
+   && at('Factorial, 'Listable) && at('Mod, 'Listable)
+   && at('Quotient, 'Listable) && at('GCD, 'Listable)
+   && at('EvenQ, 'Listable) && at('OddQ, 'Listable) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -899,6 +906,9 @@ fmod WL-EVAL is
   eq varsB(s(Q) :: A1, E :: A) = bnd(Q, E) & varsB(A1, A) .
   eq builtin(S, ap(ap(s('Function), ap(s('List), A1) :: E), A))
     = retB(ev(S, sbE(E, varsB(A1, A)))) .
+  *** Function[x, body] - single variable without list braces
+  ceq builtin(S, ap(ap(s('Function), s(Q) :: E), A))
+    = retB(ev(S, sbE(E, varsB(s(Q), A)))) if lenA(A) >= 1 .
   ceq builtin(S, ap(ap(s('Function), E), A)) = retB(ev(S, slotE(E, A)))
     if not isListFn(E) .
   op isListFn : ArgList -> Bool .
@@ -919,6 +929,94 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('First), ap(H, E :: A))) = r(S, E) .
   eq builtin(S, ap(s('Rest), ap(H, E :: A))) = r(S, ap(H, A)) .
   eq builtin(S, ap(s('Total), ap(H, A))) = ev(S, ap(s('Plus), A)) .
+
+  *** ---------------------------------------------- Listable threading
+  *** a Listable head threads elementwise over its List arguments,
+  *** broadcasting scalars; mismatched List lengths fall through inert
+  op anyList : ArgList -> Bool .
+  eq anyList(nilA) = false .
+  eq anyList(ap(s('List), A) :: A1) = true .
+  eq anyList(E :: A1) = anyList(A1) [owise] .
+  op allLists : ArgList -> Bool .
+  eq allLists(nilA) = true .
+  eq allLists(ap(s('List), A) :: A1) = allLists(A1) .
+  eq allLists(A) = false [owise] .
+  op firstLen : ArgList ~> Nat .
+  eq firstLen(ap(s('List), A) :: A1) = lenA(A) .
+  eq firstLen(E :: A1) = firstLen(A1) [owise] .
+  op okLens : ArgList Nat -> Bool .
+  eq okLens(nilA, N) = true .
+  eq okLens(ap(s('List), A) :: A1, N) = (lenA(A) == N) and okLens(A1, N) .
+  eq okLens(E :: A1, N) = okLens(A1, N) [owise] .
+  op nthOr : Expr NzNat -> Expr .
+  ceq nthOr(ap(s('List), A), NZ) = E2 if E2 := nthA(A, NZ) .
+  eq nthOr(E, NZ) = E [owise] .
+  op threadRow : ArgList NzNat -> ArgList .
+  eq threadRow(nilA, NZ) = nilA .
+  eq threadRow(E :: A, NZ) = nthOr(E, NZ) :: threadRow(A, NZ) .
+  op threadRows : Expr ArgList NzNat Nat -> ArgList .
+  ceq threadRows(HV, AV, NZ, N) = ap(HV, threadRow(AV, NZ)) :: threadRows(HV, AV, NZ + 1, N)
+    if NZ <= N .
+  eq threadRows(HV, AV, NZ, N) = nilA [owise] .
+  ceq evAp(S, HV, AV) = ev(S, ap(s('List), threadRows(HV, AV, 1, firstLen(AV))))
+    if hasAttrE(third(S), HV, 'Listable) /\ anyList(AV) /\
+       okLens(AV, firstLen(AV)) .
+
+  *** Thread / MapThread reuse the same row machinery
+  ceq builtin(S, ap(s('Thread), ap(HV, AV)))
+    = ev(S, ap(s('List), threadRows(HV, AV, 1, firstLen(AV))))
+    if anyList(AV) /\ okLens(AV, firstLen(AV)) .
+  ceq builtin(S, ap(s('MapThread), HV :: ap(s('List), AV)))
+    = ev(S, ap(s('List), threadRows(HV, AV, 1, firstLen(AV))))
+    if allLists(AV) /\ anyList(AV) /\ okLens(AV, firstLen(AV)) .
+
+  *** NestWhile: apply H while the test holds (bounded)
+  op nwB : St Expr Expr Expr Nat -> R .
+  op nwT : St Expr Expr Expr Expr Nat -> R .
+  op nwK : St Expr Expr Expr Nat -> R .
+  eq nwB(S, H, E, V, 0) = r(S, s('$Aborted)) .
+  ceq nwB(S0, H, E, V, s N) = nwT(S1, V2, H, E, V, N)
+    if r(S1, V2) := ev(S0, ap(V, E)) .
+  ceq nwT(S0, s('True), H, E, V, N) = nwK(S1, V2, H, V, N)
+    if r(S1, V2) := ev(S0, ap(H, E)) .
+  eq nwT(S, V2, H, E, V, N) = r(S, E) [owise] .
+  eq nwK(S, E, H, V, N) = nwB(S, H, E, V, N) .
+  eq builtin(S, ap(s('NestWhile), H :: E :: V)) = nwB(S, H, E, V, 100000) .
+
+  *** Sort with an ordering function: insertion sort, predicate
+  *** evaluated through the state (p[a, b] True means a before b)
+  op sortPB : St Expr ArgList -> R .
+  op insPB : St Expr Expr ArgList -> R .
+  op insPK : St Expr Expr Expr ArgList -> R .
+  eq sortPB(S, H, nilA) = r(S, nilA) .
+  ceq sortPB(S0, H, E :: A) = insPB(S1, H, E, AV)
+    if r(S1, AV) := sortPB(S0, H, A) .
+  eq insPB(S, H, E, nilA) = r(S, E) .
+  ceq insPB(S0, H, E, E1 :: A) = insPK(S1, V, H, E, E1 :: A)
+    if r(S1, V) := ev(S0, ap(H, E :: E1)) .
+  ceq insPK(S0, s('False), H, E, E1 :: A) = r(S1, E1 :: AV)
+    if r(S1, AV) := insPB(S0, H, E, A) .
+  eq insPK(S, V, H, E, A) = r(S, E :: A) [owise] .
+  ceq builtin(S0, ap(s('Sort), ap(E1, A) :: HV)) = r(S1, ap(E1, AV))
+    if r(S1, AV) := sortPB(S0, HV, A) .
+
+  *** Tuples: cartesian products over lists
+  op consFront : Expr ArgList -> ArgList .
+  eq consFront(E, nilA) = nilA .
+  eq consFront(E, ap(s('List), A) :: A1) = ap(s('List), E :: A) :: consFront(E, A1) .
+  op consEach : ArgList ArgList -> ArgList .
+  eq consEach(nilA, A1) = nilA .
+  eq consEach(E :: A, A1) = consFront(E, A1) :: consEach(A, A1) .
+  op cartL : ArgList -> ArgList .
+  eq cartL(nilA) = ap(s('List), nilA) .
+  eq cartL(ap(s('List), A) :: A1) = consEach(A, cartL(A1)) .
+  op repL : Expr Nat -> ArgList .
+  eq repL(E, 0) = nilA .
+  ceq repL(E, s N) = E :: repL(E, N) if true .
+  ceq builtin(S, ap(s('Tuples), ap(s('List), A))) = r(S, ap(s('List), cartL(A)))
+    if allLists(A) .
+  ceq builtin(S, ap(s('Tuples), ap(s('List), A) :: N))
+    = r(S, ap(s('List), cartL(repL(ap(s('List), A), N)))) if true .
 
   *** control flow: builtins receive held arguments (HoldAll) and
   *** drive evaluation themselves, fuel-bounded
@@ -947,6 +1045,7 @@ fmod WL-EVAL is
   ceq doK(S, V, E, Q, I, J) = r(S, V) if isPropagate(V) .
   ceq doK(S, V, E, Q, I, J) = doIter(S, E, Q, I + 1, J) if not isUnw(V) .
   eq builtin(S, ap(s('Do), E :: ap(s('List), s(Q) :: J))) = doIter(S, E, Q, 1, J) .
+  eq builtin(S, ap(s('Do), E :: ap(s('List), s(Q) :: I :: J))) = doIter(S, E, Q, I, J) .
   ceq builtin(S0, ap(s('Do), E :: I)) = doN(S0, E, I) if I >= 0 .
   op doN : St Expr Nat -> R .
   eq doN(S, E, 0) = r(S, s('Null)) .
@@ -964,6 +1063,17 @@ fmod WL-EVAL is
   ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: J)))
     = r(S1, ap(s('List), AV))
     if r(S1, AV) := tableIter(S0, E, Q, 1, J) .
+  ceq builtin(S0, ap(s('Table), E :: ap(s('List), s(Q) :: I :: J)))
+    = r(S1, ap(s('List), AV))
+    if r(S1, AV) := tableIter(S0, E, Q, I, J) .
+  *** multiple iterators nest: Table[e, it1, it2, ...] builds rows of
+  *** Table[e, it2, ...] with it1's variable bound outermost
+  op isIterSpec : Expr -> Bool .
+  eq isIterSpec(ap(s('List), s(Q) :: A)) = true .
+  eq isIterSpec(E) = false [owise] .
+  ceq builtin(S, ap(s('Table), E :: E1 :: E2 :: A))
+    = builtin(S, ap(s('Table), ap(s('Table), E :: E2 :: A) :: E1))
+    if isIterSpec(E1) /\ isIterSpec(E2) .
 
   *** iteration combinators (args arrive evaluated - no Hold)
   op foldB : St Expr Expr ArgList -> R .
@@ -1011,6 +1121,10 @@ fmod WL-EVAL is
   ceq builtin(S, ap(s('Part), E :: 0)) = builtin(S, ap(s('Head), E)) if true .
   ceq builtin(S, ap(s('Part), ap(H, A) :: I)) = r(S, E2)
     if I > 0 /\ E2 := nthA(A, I) .
+  *** nested Part specs: e[[i, j, ...]] drills in level by level
+  ceq builtin(S, ap(s('Part), ap(H, A) :: I :: A1))
+    = builtin(S, ap(s('Part), E2 :: A1))
+    if lenA(A1) >= 1 /\ I > 0 /\ E2 := nthA(A, I) .
   eq builtin(S, ap(s('Last), ap(H, A :: E))) = r(S, E) .
   eq builtin(S, ap(s('Sort), ap(H, A))) = r(S, ap(H, sortA(A))) .
   op takeA : ArgList Nat -> ArgList .
