@@ -6,6 +6,7 @@
 
 export type Ast =
   | { kind: "int"; value: string }
+  | { kind: "real"; value: string }
   | { kind: "string"; value: string }
   | { kind: "symbol"; name: string }
   | {
@@ -20,7 +21,7 @@ export type Ast =
   | { kind: "apply"; head: Ast; args: Ast[] };
 
 interface Token {
-  type: "num" | "str" | "sym" | "blank" | "slot" | "slotseq" | "op";
+  type: "num" | "real" | "str" | "sym" | "blank" | "slot" | "slotseq" | "op";
   text: string;
   name?: string | null;
   head?: string | null;
@@ -28,6 +29,8 @@ interface Token {
 }
 
 const OPS = [
+  "<|",
+  "|>",
   "^:=",
   "//.",
   "===",
@@ -87,6 +90,23 @@ export function tokenize(source: string): Token[] {
     if (/[0-9]/.test(c)) {
       let j = i;
       while (j < src.length && /[0-9]/.test(src[j])) j++;
+      // real literal: 1.5, 2., 3.2e-4 (but not Part's `[[`-adjacent dots)
+      if (src[j] === "." && src[j + 1] !== ".") {
+        j++;
+        while (j < src.length && /[0-9]/.test(src[j])) j++;
+        if (src[j] === "e" || src[j] === "E") {
+          let k = j + 1;
+          if (src[k] === "-" || src[k] === "+") k++;
+          if (/[0-9]/.test(src[k] ?? "")) {
+            k++;
+            while (k < src.length && /[0-9]/.test(src[k])) k++;
+            j = k;
+          }
+        }
+        tokens.push({ type: "real", text: src.slice(i, j) });
+        i = j;
+        continue;
+      }
       tokens.push({ type: "num", text: src.slice(i, j) });
       i = j;
       continue;
@@ -280,8 +300,8 @@ class Parser {
     if (t && t.type === "op" && t.text === "-") {
       this.next();
       const operand = this.parseExpr(92);
-      if (operand.kind === "int") {
-        return { kind: "int", value: `-${operand.value}` };
+      if (operand.kind === "int" || operand.kind === "real") {
+        return { ...operand, value: `-${operand.value}` };
       }
       return { kind: "apply", head: sym("Times"), args: [int("-1"), operand] };
     }
@@ -295,6 +315,7 @@ class Parser {
   private parsePrimary(_minBp: number): Ast {
     const t = this.next();
     if (t.type === "num") return int(t.text);
+    if (t.type === "real") return { kind: "real", value: t.text };
     if (t.type === "str") return { kind: "string", value: t.text };
     if (t.type === "sym") return sym(t.text);
     if (t.type === "slot") return { kind: "slot", index: Number(t.text) };
@@ -315,6 +336,10 @@ class Parser {
     if (t.type === "op" && t.text === "{") {
       const args = this.parseArgs("}");
       return { kind: "apply", head: sym("List"), args };
+    }
+    if (t.type === "op" && t.text === "<|") {
+      const args = this.parseArgs("|>");
+      return { kind: "apply", head: sym("Association"), args };
     }
     throw new Error(`unexpected '${t.text}'`);
   }
@@ -425,6 +450,13 @@ export function toCore(ast: Ast): string {
   switch (ast.kind) {
     case "int":
       return ast.value;
+    case "real": {
+      // Maude float literals need a digit on both sides of the dot
+      let v = ast.value;
+      if (v.endsWith(".")) v += "0";
+      v = v.replace(/\.e/i, ".0e");
+      return `fl(${v})`;
+    }
     case "string":
       return `str("${ast.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
     case "symbol":

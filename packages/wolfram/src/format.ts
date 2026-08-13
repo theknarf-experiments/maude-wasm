@@ -2,6 +2,7 @@
 
 type Core =
   | { kind: "num"; value: string }
+  | { kind: "real"; value: string }
   | { kind: "string"; value: string }
   | { kind: "symbol"; name: string }
   | { kind: "blank"; name: string; head: string | null; depth: 1 | 2 | 3 }
@@ -52,6 +53,16 @@ class CoreParser {
     if (num) {
       this.pos += num[0].length;
       return { kind: "num", value: num[0] };
+    }
+    if (this.lit("fl(")) {
+      this.ws();
+      const m = /^-?(Infinity|NaN|[0-9]+(\.[0-9]*)?([eE][+-]?[0-9]+)?)/.exec(
+        this.src.slice(this.pos),
+      );
+      if (!m) throw new Error(`bad float at ${this.pos}`);
+      this.pos += m[0].length;
+      this.expect(")");
+      return { kind: "real", value: m[0] };
     }
     if (this.lit("ap(")) {
       const head = this.parseExpr();
@@ -127,6 +138,10 @@ function fmt(core: Core, parentPrec: number): string {
     case "num":
     case "symbol":
       return core.kind === "num" ? core.value : core.name;
+    case "real": {
+      const s = String(Number(core.value));
+      return /[.e]/.test(s) ? s : `${s}.`;
+    }
     case "string":
       return `"${core.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     case "blank": {
@@ -142,6 +157,9 @@ function fmt(core: Core, parentPrec: number): string {
       }
       if (headSym === "List") {
         return `{${core.args.map((a) => fmt(a, 0)).join(", ")}}`;
+      }
+      if (headSym === "Association") {
+        return `<|${core.args.map((a) => fmt(a, 0)).join(", ")}|>`;
       }
       if (
         headSym === "Slot" &&
@@ -187,8 +205,11 @@ function fmt(core: Core, parentPrec: number): string {
 
 /** Split a Plus term into sign and magnitude for pretty printing. */
 function negSplit(core: Core): { neg: boolean; term: Core } {
-  if (core.kind === "num" && core.value.startsWith("-")) {
-    return { neg: true, term: { kind: "num", value: core.value.slice(1) } };
+  if (
+    (core.kind === "num" || core.kind === "real") &&
+    core.value.startsWith("-")
+  ) {
+    return { neg: true, term: { ...core, value: core.value.slice(1) } };
   }
   if (
     core.kind === "apply" &&

@@ -289,9 +289,20 @@ conformance table in `test/wl.test.ts` covers each item below.
       comparisons. Division works through the parser form
       `Times[a, Power[b, -1]]`. *Also done:* `GCD`, `Factorial`, `Binomial`, `Abs`, `Min`/`Max`,
       `Mod`/`Quotient` (WL floor-division sign semantics), `Unequal`,
-      `SameQ`. *Pending:* `Complex`.
-- [ ] **4.2 Machine reals** on Maude `FLOAT`; numeric contagion rules
-      (exact + inexact → inexact).
+      `SameQ`, and `Complex` — written entirely in the stdlib: `I` is
+      an own-value for `Complex[0, 1]`; Plus/Times rules with *two*
+      sequence variables fold Complex pairs wherever they sit in the
+      flattened argument list (guarded against the identity elements
+      they produce, which otherwise loop); `Re`/`Im`/`Conjugate`,
+      integer powers via `Nest`.
+- [x] **4.2 Machine reals** on Maude `FLOAT` (`fl` atom): contagion in
+      Plus/Times/Power (any float makes the numeric part float, like-term
+      collection carries float coefficients), mixed-mode comparisons,
+      `N[expr]` (deep Rat→Float + re-evaluate), `_Real` typed blanks,
+      `Head` → `Real`, and float `Sin`/`Cos`/`Exp`/`Log`/`Sqrt`/`Abs`.
+      Divergences: machine zero/one identities collapse in sums and
+      products (WL keeps `0. + x`); output prints the full float repr,
+      not WL's 6-digit display.
 - [ ] **4.3 Arbitrary-precision reals.** Scaled-integer bigfloats with
       WL-style precision tracking (`N[expr, 50]`, `Precision`). This is
       the largest pure-library item in the plan; consider deferring
@@ -300,9 +311,14 @@ conformance table in `test/wl.test.ts` covers each item below.
       `ToString` (integers/strings/symbols), `Characters`,
       `StringTake` (positive/negative/`{a, b}` specs), `StringDrop`.
       *Pending:* `StringExpression`.
-- [ ] **4.5 `Association`** (as ACU map term), `Keys`, `Values`,
-      `Lookup`, `KeyDropFrom` etc. — modern WL code is unusable
-      without it.
+- [x] **4.5 `Association`** — ordered like WL's (not an ACU map: WL
+      preserves insertion order), later duplicate keys win, nested
+      Lists/Associations flatten on construction. `<|...|>` syntax in
+      parser and formatter; `Keys`, `Values`, `Lookup` (with default /
+      `Missing["KeyAbsent", k]`), `assoc[key]` application,
+      `KeyExistsQ`, `KeyDrop`, `Normal`, `AssociationQ`, plus
+      `Append`/`Prepend` and the HoldFirst mutation sugar
+      `AppendTo`/`PrependTo`/`AssociateTo`/`KeyDropFrom` in the stdlib.
 
 ## Phase 5 — Standard library (written in WL/M itself where possible)
 

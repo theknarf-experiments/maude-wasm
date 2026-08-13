@@ -161,6 +161,43 @@ const cases: Array<[string, string]> = [
   ["Cases[{1, {2, {3}}}, _Integer, {2}]", "{2}"],
   ["Position[{a, {b, a}}, a]", "{{1}, {2, 2}}"],
   ["Position[f[g[1], 2], _Integer]", "{{1, 1}, {2}}"],
+  // machine reals with contagion
+  ["1.5 + 2.5", "4."],
+  ["{1/2 + 0.25, 2^0.5}", "{0.75, 1.4142135623730951}"],
+  ["{N[1/3], N[Sqrt[2]], N[Exp[1]]}[[2]]", "1.4142135623730951"],
+  [
+    "{1.5 < 2, 2 == 2.0, Head[1.5], IntegerQ[1.5]}",
+    "{True, True, Real, False}",
+  ],
+  ["f[x_Real] := real; {f[1.5], f[2]}", "{real, f[2]}"],
+  ["2.0 * x + 1.5 * x", "3.5*x"],
+  ["N[{1/2, 1/4}]", "{0.5, 0.25}"],
+  // Association
+  [
+    'a = <|"x" -> 1, "y" -> 2|>; {Keys[a], Values[a], a["y"]}',
+    '{{"x", "y"}, {1, 2}, 2}',
+  ],
+  [
+    'a = <|"x" -> 1|>; {Lookup[a, "x"], Lookup[a, "z", 99], Lookup[a, "z"]}',
+    '{1, 99, Missing["KeyAbsent", "z"]}',
+  ],
+  ['<|"x" -> 1, "x" -> 5|>', '<|"x" -> 5|>'],
+  ['Association[{"a" -> 1}, <|"b" -> 2|>]', '<|"a" -> 1, "b" -> 2|>'],
+  [
+    'a = <|"x" -> 1|>; AssociateTo[a, "y" -> 2]; KeyDropFrom[a, "x"]; a',
+    '<|"y" -> 2|>',
+  ],
+  [
+    '{KeyExistsQ[<|"x" -> 1|>, "x"], Normal[<|"x" -> 1|>], AssociationQ[{1}]}',
+    '{True, {"x" -> 1}, False}',
+  ],
+  // Append/Prepend and mutation sugar
+  ["l = {1}; AppendTo[l, 2]; PrependTo[l, 0]; l", "{0, 1, 2}"],
+  // complex numbers
+  ["I^2", "-1"],
+  ["(1 + 2*I) * (3 - I)", "Complex[5, 5]"],
+  ["(1 + I) + (1 - I)", "2"],
+  ["{Re[3 + 4*I], Im[3 + 4*I], Conjugate[2 + 3*I]}", "{3, 4, Complex[2, -3]}"],
 ];
 
 describe("end-to-end Wolfram notation", () => {

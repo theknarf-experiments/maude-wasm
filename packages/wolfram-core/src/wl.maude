@@ -21,6 +21,7 @@
 
 fmod WL-SYNTAX is
   protecting RAT .
+  protecting FLOAT .
   protecting STRING .
   protecting QID .
   sorts Expr ArgList .
@@ -28,6 +29,7 @@ fmod WL-SYNTAX is
   subsort Rat < Expr .
   op s : Qid -> Expr [ctor] .              *** symbol
   op str : String -> Expr [ctor] .         *** string atom
+  op fl : Float -> Expr [ctor] .           *** machine real
   op ap : Expr ArgList -> Expr [ctor] .    *** application h[args]
   op nilA : -> ArgList [ctor] .
   op _::_ : ArgList ArgList -> ArgList [ctor assoc id: nilA prec 60] .
@@ -72,11 +74,13 @@ endfm
 *** total order on expressions for Orderless canonicalization
 fmod WL-ORDER is
   protecting WL-BINDINGS .
+  protecting CONVERSION .
   var RA RB : Rat . var Q Q2 Q3 Q4 : Qid . var Str Str2 : String .
-  var E E2 H H2 : Expr . var A A2 : ArgList .
+  var E E2 H H2 : Expr . var A A2 : ArgList . var FL FL2 : Float .
 
   op rank : Expr -> Nat .
   eq rank(RA) = 0 .
+  eq rank(fl(FL)) = 0 .
   eq rank(str(Str)) = 1 .
   eq rank(s(Q)) = 2 .
   eq rank(? Q) = 3 .
@@ -92,6 +96,9 @@ fmod WL-ORDER is
   op ltA : ArgList ArgList -> Bool .
   ceq ltE(E, E2) = rank(E) < rank(E2) if rank(E) =/= rank(E2) .
   eq ltE(RA, RB) = RA < RB .
+  eq ltE(fl(FL), fl(FL2)) = FL < FL2 .
+  eq ltE(RA, fl(FL)) = float(RA) < FL .
+  eq ltE(fl(FL), RA) = FL < float(RA) .
   eq ltE(str(Str), str(Str2)) = Str < Str2 .
   eq ltE(s(Q), s(Q2)) = string(Q) < string(Q2) .
   eq ltE(? Q, ? Q2) = string(Q) < string(Q2) .
@@ -175,8 +182,9 @@ fmod WL-META is
   eq typedVar(C, "Integer") = blankVar(C, ":Int") .
   eq typedVar(C, "String") = 'str[blankVar(C, ":String")] .
   eq typedVar(C, "Symbol") = 's[blankVar(C, ":Qid")] .
+  eq typedVar(C, "Real") = 'fl[blankVar(C, ":Float")] .
   ceq typedVar(C, S) = 'ap['s[qid("'" + S + ".Qid")], blankVar(C, "$ap$" + S + ":ArgList")]
-    if S =/= "Integer" /\ S =/= "String" /\ S =/= "Symbol" .
+    if S =/= "Integer" /\ S =/= "String" /\ S =/= "Symbol" /\ S =/= "Real" .
   eq p2m('s[C]) = 's[reQ(C)] .
   eq p2m(F[NeTL]) = F[p2mL(NeTL)] [owise] .
   eq p2m(T) = T [owise] .
@@ -204,6 +212,8 @@ fmod WL-META is
   eq dnStr(T) = downTerm(T, "$downTermError") .
   op dnQ : Term ~> Qid .
   eq dnQ(T) = downTerm(T, '$downTermError) .
+  op dnF : Term ~> Float .
+  eq dnF(T) = downTerm(T, 1.0e300) .
   op s2b : Substitution -> Bnds .
   ceq s2b((V <- T) ; Sb) = mkB(V, T) & s2b(Sb) if true .
   eq s2b(none) = noBnds .
@@ -214,6 +224,7 @@ fmod WL-META is
     if N2 := find(string(getName(V)), "$ap$", 0) /\ A := dn(T) .
   ceq mkB(V, T) = bnd(getName(V), str(dnStr(T))) if getType(V) == 'String .
   ceq mkB(V, T) = bnd(getName(V), s(dnQ(T))) if getType(V) == 'Qid .
+  ceq mkB(V, T) = bnd(getName(V), fl(dnF(T))) if getType(V) == 'Float .
   ceq mkB(V, T) = bnd(getName(V), A) if A := dn(T) [owise] .
   var N2 : Nat . var A2 : ArgList .
 endfm
@@ -244,6 +255,7 @@ fmod WL-EVAL is
   var A A1 AV Rest : ArgList .
   var Q F AT : Qid . var B : Bnds . var Sb : Substitution .
   var P UM T : Term . var Str : String . var At : Attrs .
+  var FL FL2 : Float .
 
   *** ---------------------------------------------------- attributes
   op hasAttr : Attrs Qid Qid -> Bool .
@@ -505,6 +517,7 @@ fmod WL-EVAL is
 
   *** atoms and inert forms
   eq ev(S, RA) = r(S, RA) .
+  eq ev(S, fl(FL)) = r(S, fl(FL)) .
   eq ev(S, unw(Q, E)) = r(S, unw(Q, E)) .
   eq ev(S, str(Str)) = r(S, str(Str)) .
   eq ev(S, s(Q)) = apply(S, s(Q)) .
@@ -709,7 +722,89 @@ fmod WL-EVAL is
   eq plusOut(nilA) = 0 .
   eq plusOut(E) = E .
   ceq plusOut(E :: E1 :: A) = ap(s('Plus), E :: E1 :: A) if true .
-  eq builtin(S, ap(s('Plus), A)) = r(S, plusOut(dropZeros(collectP(A)))) .
+  ceq builtin(S, ap(s('Plus), A)) = r(S, plusOut(dropZeros(collectP(A))))
+    if not anyFlN(A) .
+
+  *** numeric contagion: any machine real makes the numeric part float
+  op anyFl : ArgList -> Bool .
+  eq anyFl(nilA) = false .
+  eq anyFl(fl(FL) :: A) = true .
+  eq anyFl(E :: A) = anyFl(A) [owise] .
+  op sumFl : ArgList -> Float .
+  eq sumFl(nilA) = 0.0 .
+  eq sumFl(RA :: A) = float(RA) + sumFl(A) .
+  eq sumFl(fl(FL) :: A) = FL + sumFl(A) .
+  eq sumFl(E :: A) = sumFl(A) [owise] .
+  op prodFl : ArgList -> Float .
+  eq prodFl(nilA) = 1.0 .
+  eq prodFl(RA :: A) = float(RA) * prodFl(A) .
+  eq prodFl(fl(FL) :: A) = FL * prodFl(A) .
+  eq prodFl(E :: A) = prodFl(A) [owise] .
+  op nonNumA : ArgList -> ArgList .
+  eq nonNumA(nilA) = nilA .
+  eq nonNumA(RA :: A) = nonNumA(A) .
+  eq nonNumA(fl(FL) :: A) = nonNumA(A) .
+  eq nonNumA(E :: A) = E :: nonNumA(A) [owise] .
+  *** inexact zero/one identities collapse like their exact versions
+  op plusFlOut : Float ArgList -> Expr .
+  eq plusFlOut(FL, nilA) = fl(FL) .
+  ceq plusFlOut(FL, A) = plusOut(A) if FL == 0.0 /\ lenA(A) >= 1 .
+  ceq plusFlOut(FL, A) = ap(s('Plus), fl(FL) :: A)
+    if FL =/= 0.0 /\ lenA(A) >= 1 .
+  op timesFlOut : Float ArgList -> Expr .
+  eq timesFlOut(FL, nilA) = fl(FL) .
+  ceq timesFlOut(FL, A) = fl(0.0) if FL == 0.0 /\ lenA(A) >= 1 .
+  ceq timesFlOut(FL, E) = E if FL == 1.0 .
+  ceq timesFlOut(FL, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if FL == 1.0 .
+  ceq timesFlOut(FL, A) = ap(s('Times), fl(FL) :: A)
+    if FL =/= 0.0 /\ FL =/= 1.0 /\ lenA(A) >= 1 .
+
+  *** float detection also inside Times coefficients, and float-aware
+  *** like-term collection for the inexact Plus path
+  op anyFlN : ArgList -> Bool .
+  eq anyFlN(nilA) = false .
+  eq anyFlN(fl(FL) :: A) = true .
+  eq anyFlN(ap(s('Times), fl(FL) :: A1) :: A) = true .
+  eq anyFlN(E :: A) = anyFlN(A) [owise] .
+  op coefFl : Expr -> Float .
+  eq coefFl(RA) = float(RA) .
+  eq coefFl(fl(FL)) = FL .
+  ceq coefFl(ap(s('Times), RA :: A)) = float(RA) if lenA(A) >= 1 .
+  ceq coefFl(ap(s('Times), fl(FL) :: A)) = FL if lenA(A) >= 1 .
+  eq coefFl(E) = 1.0 [owise] .
+  op restFl : Expr -> ArgList .
+  eq restFl(RA) = nilA .
+  eq restFl(fl(FL)) = nilA .
+  ceq restFl(ap(s('Times), RA :: A)) = A if lenA(A) >= 1 .
+  ceq restFl(ap(s('Times), fl(FL) :: A)) = A if lenA(A) >= 1 .
+  ceq restFl(ap(s('Times), E :: A)) = E :: A
+    if not (E :: Rat) /\ not anyFl(E) /\ lenA(A) >= 1 .
+  eq restFl(E) = E [owise] .
+  op mkTermF : Float ArgList -> Expr .
+  eq mkTermF(FL, nilA) = fl(FL) .
+  ceq mkTermF(FL, A) = fl(0.0) if FL == 0.0 /\ lenA(A) >= 1 .
+  ceq mkTermF(FL, A) = ap(s('Times), fl(FL) :: A)
+    if FL =/= 0.0 /\ lenA(A) >= 1 .
+  op sumCoF : ArgList ArgList -> Float .
+  eq sumCoF(nilA, A1) = 0.0 .
+  eq sumCoF(E :: A, A1)
+    = if restFl(E) == A1 then coefFl(E) + sumCoF(A, A1) else sumCoF(A, A1) fi .
+  op dropCoF : ArgList ArgList -> ArgList .
+  eq dropCoF(nilA, A1) = nilA .
+  eq dropCoF(E :: A, A1)
+    = if restFl(E) == A1 then dropCoF(A, A1) else E :: dropCoF(A, A1) fi .
+  op collectPF : ArgList -> ArgList .
+  eq collectPF(nilA) = nilA .
+  eq collectPF(E :: A)
+    = mkTermF(coefFl(E) + sumCoF(A, restFl(E)), restFl(E))
+      :: collectPF(dropCoF(A, restFl(E))) .
+  op dropZeroF : ArgList -> ArgList .
+  eq dropZeroF(nilA) = nilA .
+  ceq dropZeroF(fl(FL) :: A) = dropZeroF(A) if FL == 0.0 .
+  eq dropZeroF(E :: A) = E :: dropZeroF(A) [owise] .
+  ceq builtin(S, ap(s('Plus), A))
+    = r(S, plusFlOut(sumFl(A), dropZeroF(collectPF(nonNumA(A)))))
+    if anyFlN(A) .
 
   *** Times multiplies the rational prefix and collects powers by base
   *** so x * x -> x^2; symbolic exponents stay opaque
@@ -755,9 +850,16 @@ fmod WL-EVAL is
   ceq timesOut(RA, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if RA == 1 .
   ceq timesOut(RA, A) = ap(s('Times), RA :: A)
     if RA =/= 0 /\ RA =/= 1 /\ lenA(A) >= 1 .
-  eq builtin(S, ap(s('Times), A))
-    = r(S, timesOut(prodRat(A), dropOnes(collectF(nonRatA(A))))) .
+  ceq builtin(S, ap(s('Times), A))
+    = r(S, timesOut(prodRat(A), dropOnes(collectF(nonRatA(A)))))
+    if not anyFl(A) .
+  ceq builtin(S, ap(s('Times), A))
+    = r(S, timesFlOut(prodFl(A), dropOnes(collectF(nonNumA(A)))))
+    if anyFl(A) .
 
+  ceq builtin(S, ap(s('Power), fl(FL) :: fl(FL2))) = r(S, fl(FL ^ FL2)) if true .
+  eq builtin(S, ap(s('Power), fl(FL) :: RA)) = r(S, fl(FL ^ float(RA))) .
+  eq builtin(S, ap(s('Power), RA :: fl(FL))) = r(S, fl(float(RA) ^ FL)) .
   ceq builtin(S, ap(s('Power), RA :: J)) = r(S, RA ^ J) if J >= 0 .
   eq builtin(S, ap(s('Power), E :: 0)) = r(S, 1) [owise] .
   eq builtin(S, ap(s('Power), E :: 1)) = r(S, E) [owise] .
@@ -775,11 +877,45 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('Equal), RA :: RB)) = r(S, bool2wl(RA == RB)) .
   ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, s('True)) if E == E1 .
 
+  *** mixed-mode comparisons through float
+  op numF : Expr ~> Float .
+  eq numF(RA) = float(RA) .
+  eq numF(fl(FL)) = FL .
+  ceq builtin(S, ap(s('Less), E :: E1)) = r(S, bool2wl(FL < FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('Greater), E :: E1)) = r(S, bool2wl(FL > FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('LessEqual), E :: E1)) = r(S, bool2wl(FL <= FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('GreaterEqual), E :: E1)) = r(S, bool2wl(FL >= FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('Equal), E :: E1)) = r(S, bool2wl(FL == FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+  ceq builtin(S, ap(s('Unequal), E :: E1)) = r(S, bool2wl(FL =/= FL2))
+    if anyFl(E :: E1) /\ FL := numF(E) /\ FL2 := numF(E1) .
+
+  *** N and float elementary functions
+  op nE1 : Expr -> Expr .
+  op nEA : ArgList -> ArgList .
+  eq nE1(RA) = fl(float(RA)) .
+  eq nE1(ap(H, A)) = ap(nE1(H), nEA(A)) .
+  eq nE1(E) = E [owise] .
+  eq nEA(nilA) = nilA .
+  eq nEA(E :: A) = nE1(E) :: nEA(A) .
+  eq builtin(S, ap(s('N), E)) = ev(S, nE1(E)) .
+  eq builtin(S, ap(s('Sin), fl(FL))) = r(S, fl(sin(FL))) .
+  eq builtin(S, ap(s('Cos), fl(FL))) = r(S, fl(cos(FL))) .
+  eq builtin(S, ap(s('Exp), fl(FL))) = r(S, fl(exp(FL))) .
+  ceq builtin(S, ap(s('Log), fl(FL))) = r(S, fl(log(FL))) if FL > 0.0 .
+  ceq builtin(S, ap(s('Sqrt), fl(FL))) = r(S, fl(sqrt(FL))) if FL >= 0.0 .
+  eq builtin(S, ap(s('Abs), fl(FL))) = r(S, fl(abs(FL))) .
+
   eq builtin(S, ap(s('Head), ap(H, A))) = r(S, H) .
   eq builtin(S, ap(s('Head), I)) = r(S, s('Integer)) .
   ceq builtin(S, ap(s('Head), RA)) = r(S, s('Rational)) if not (RA :: Int) .
   eq builtin(S, ap(s('Head), str(Str))) = r(S, s('String)) .
   eq builtin(S, ap(s('Head), s(Q))) = r(S, s('Symbol)) .
+  eq builtin(S, ap(s('Head), fl(FL))) = r(S, s('Real)) .
   eq builtin(S, ap(s('Length), ap(H, A))) = r(S, lenA(A)) .
   eq builtin(S, ap(s('Length), RA)) = r(S, 0) .
   eq builtin(S, ap(s('Length), str(Str))) = r(S, 0) .
@@ -799,7 +935,9 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('Not), s('True))) = r(S, s('False)) .
   eq builtin(S, ap(s('Not), s('False))) = r(S, s('True)) .
   eq builtin(S, ap(s('NumberQ), RA)) = r(S, s('True)) .
-  ceq builtin(S, ap(s('NumberQ), E)) = r(S, s('False)) if not (E :: Rat) .
+  eq builtin(S, ap(s('NumberQ), fl(FL))) = r(S, s('True)) .
+  ceq builtin(S, ap(s('NumberQ), E)) = r(S, s('False))
+    if not (E :: Rat) /\ not anyFl(E) .
   eq builtin(S, ap(s('EvenQ), I)) = r(S, bool2wl(I rem 2 == 0)) .
   eq builtin(S, ap(s('OddQ), I)) = r(S, bool2wl(I rem 2 =/= 0)) .
   eq builtin(S, ap(s('IntegerQ), I)) = r(S, s('True)) .
@@ -932,6 +1070,7 @@ fmod WL-EVAL is
   ceq headIs(RA, 'Rational) = true if not (RA :: Int) .
   eq headIs(str(Str), 'String) = true .
   eq headIs(s(Q), 'Symbol) = true .
+  eq headIs(fl(FL), 'Real) = true .
   eq headIs(ap(s(F), A), F) = true .
   eq headIs(E, F) = false [owise] .
   op allHeadA : ArgList Qid -> Bool .
@@ -1283,6 +1422,81 @@ fmod WL-EVAL is
     then ap(s('List), headsA(A)) :: transB(tailsA(A))
     else nilA fi .
   eq builtin(S, ap(s('Transpose), ap(s('List), A))) = r(S, ap(s('List), transB(A))) .
+
+  *** Association: ordered key -> value container; later bindings win,
+  *** nested Lists/Associations flatten on construction
+  op keyOf : Expr ~> Expr .
+  eq keyOf(ap(s('Rule), E :: V)) = E .
+  eq keyOf(ap(s('RuleDelayed), E :: V)) = E .
+  op hasKey : ArgList Expr -> Bool .
+  eq hasKey(nilA, E) = false .
+  ceq hasKey(E1 :: A, E) = true if keyOf(E1) == E .
+  eq hasKey(E1 :: A, E) = hasKey(A, E) [owise] .
+  op flatRules : ArgList -> ArgList .
+  eq flatRules(nilA) = nilA .
+  eq flatRules(ap(s('List), A) :: A1) = flatRules(A) :: flatRules(A1) .
+  eq flatRules(ap(s('Association), A) :: A1) = flatRules(A) :: flatRules(A1) .
+  eq flatRules(E :: A1) = E :: flatRules(A1) [owise] .
+  op dedupR : ArgList -> ArgList .
+  eq dedupR(nilA) = nilA .
+  eq dedupR(E :: A)
+    = if hasKey(A, keyOf(E)) then dedupR(A) else E :: dedupR(A) fi .
+  eq builtin(S, ap(s('Association), A))
+    = r(S, ap(s('Association), dedupR(flatRules(A)))) .
+  op keysA : ArgList -> ArgList .
+  eq keysA(nilA) = nilA .
+  eq keysA(ap(s('Rule), E :: V) :: A) = E :: keysA(A) .
+  eq keysA(ap(s('RuleDelayed), E :: V) :: A) = E :: keysA(A) .
+  eq keysA(E :: A) = keysA(A) [owise] .
+  op valsA : ArgList -> ArgList .
+  eq valsA(nilA) = nilA .
+  eq valsA(ap(s('Rule), E :: V) :: A) = V :: valsA(A) .
+  eq valsA(ap(s('RuleDelayed), E :: V) :: A) = V :: valsA(A) .
+  eq valsA(E :: A) = valsA(A) [owise] .
+  eq builtin(S, ap(s('Keys), ap(s('Association), A)))
+    = r(S, ap(s('List), keysA(A))) .
+  eq builtin(S, ap(s('Values), ap(s('Association), A)))
+    = r(S, ap(s('List), valsA(A))) .
+  op lookD : ArgList Expr Expr -> Expr .
+  eq lookD(nilA, E, E2) = E2 .
+  eq lookD(ap(s('Rule), E :: V) :: A, E, E2) = V .
+  eq lookD(ap(s('RuleDelayed), E :: V) :: A, E, E2) = V .
+  eq lookD(E1 :: A, E, E2) = lookD(A, E, E2) [owise] .
+  op missingK : Expr -> Expr .
+  eq missingK(E) = ap(s('Missing), str("KeyAbsent") :: E) .
+  eq builtin(S, ap(s('Lookup), ap(s('Association), A) :: E))
+    = ev(S, lookD(A, E, missingK(E))) .
+  ceq builtin(S, ap(s('Lookup), ap(s('Association), A) :: E :: E1))
+    = ev(S, lookD(A, E, E1)) if true .
+  eq builtin(S, ap(ap(s('Association), A), E))
+    = ev(S, lookD(A, E, missingK(E))) .
+  eq builtin(S, ap(s('KeyExistsQ), ap(s('Association), A) :: E))
+    = r(S, bool2wl(hasKey(A, E))) .
+  op dropK : ArgList Expr -> ArgList .
+  eq dropK(nilA, E) = nilA .
+  ceq dropK(E1 :: A, E) = dropK(A, E) if keyOf(E1) == E .
+  eq dropK(E1 :: A, E) = E1 :: dropK(A, E) [owise] .
+  op dropKs : ArgList ArgList -> ArgList .
+  eq dropKs(A, nilA) = A .
+  eq dropKs(A, E :: A1) = dropKs(dropK(A, E), A1) .
+  eq builtin(S, ap(s('KeyDrop), ap(s('Association), A) :: ap(s('List), A1)))
+    = r(S, ap(s('Association), dropKs(A, A1))) .
+  ceq builtin(S, ap(s('KeyDrop), ap(s('Association), A) :: E))
+    = r(S, ap(s('Association), dropK(A, E))) if not isListE(E) .
+  op isListE : Expr -> Bool .
+  eq isListE(ap(s('List), A)) = true .
+  eq isListE(E) = false [owise] .
+  eq builtin(S, ap(s('Normal), ap(s('Association), A))) = r(S, ap(s('List), A)) .
+  eq builtin(S, ap(s('AssociationQ), ap(s('Association), A))) = r(S, s('True)) .
+  ceq builtin(S, ap(s('AssociationQ), E)) = r(S, s('False))
+    if not isAssocE(E) .
+  op isAssocE : Expr -> Bool .
+  eq isAssocE(ap(s('Association), A)) = true .
+  eq isAssocE(E) = false [owise] .
+
+  *** Append / Prepend (any head)
+  eq builtin(S, ap(s('Append), ap(H, A) :: E)) = r(S, ap(H, A :: E)) .
+  eq builtin(S, ap(s('Prepend), ap(H, A) :: E)) = r(S, ap(H, E :: A)) .
 
   *** Block: dynamic scoping - save own-value definitions of the listed
   *** symbols, install initializers, run the body, restore

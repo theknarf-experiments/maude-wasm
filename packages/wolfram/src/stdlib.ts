@@ -59,6 +59,34 @@ Riffle[{}, s_] := {};
 Riffle[{x_}, s_] := {x};
 Riffle[{x_, r__}, s_] := Join[{x, s}, Riffle[{r}, s]];
 
+(* complex numbers: I is Complex[0, 1]; sums and products fold pairs
+   wherever they sit in the flattened argument list *)
+Complex[a_, 0] := a;
+I = Complex[0, 1];
+l___ + Complex[a_, b_] + m___ + Complex[c_, d_] + rr___ :=
+  Plus[l] + Complex[a + c, b + d] + Plus[m] + Plus[rr];
+x_?NumberQ + l___ + Complex[a_, b_] + m___ :=
+  Complex[x + a, b] + Plus[l] + Plus[m] /; x != 0;
+l___ * Complex[a_, b_] * m___ * Complex[c_, d_] * rr___ :=
+  Times[l] * Complex[a*c - b*d, a*d + b*c] * Times[m] * Times[rr];
+x_?NumberQ * l___ * Complex[a_, b_] * m___ :=
+  Complex[x*a, x*b] * Times[l] * Times[m] /; x != 1;
+Complex[a_, b_]^n_ :=
+  Nest[Function[z, z * Complex[a, b]], 1, n] /; IntegerQ[n] && n > 0;
+Re[Complex[a_, b_]] := a; Re[x_?NumberQ] := x;
+Im[Complex[a_, b_]] := b; Im[x_?NumberQ] := 0;
+Conjugate[Complex[a_, b_]] := Complex[a, -b]; Conjugate[x_?NumberQ] := x;
+
+(* in-place update sugar over own-values *)
+SetAttributes[AppendTo, HoldFirst];
+AppendTo[s_, e_] := s = Append[s, e];
+SetAttributes[PrependTo, HoldFirst];
+PrependTo[s_, e_] := s = Prepend[s, e];
+SetAttributes[AssociateTo, HoldFirst];
+AssociateTo[s_, r_] := s = Association[s, r];
+SetAttributes[KeyDropFrom, HoldFirst];
+KeyDropFrom[s_, k_] := s = KeyDrop[s, k];
+
 (* special values *)
 Sin[0] = 0; Cos[0] = 1; Exp[0] = 1; Log[1] = 0
 `;
