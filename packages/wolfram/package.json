@@ -16,6 +16,10 @@
     "./format": {
       "types": "./dist/format.d.ts",
       "default": "./dist/format.js"
+    },
+    "./stdlib": {
+      "types": "./dist/stdlib.d.ts",
+      "default": "./dist/stdlib.js"
     }
   },
   "files": [

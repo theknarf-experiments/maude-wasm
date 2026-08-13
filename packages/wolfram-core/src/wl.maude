@@ -577,6 +577,8 @@ fmod WL-EVAL is
   ceq builtin(S, ap(s('Times), 0 :: A)) = r(S, 0) if lenA(A) >= 1 .
 
   ceq builtin(S, ap(s('Power), RA :: J)) = r(S, RA ^ J) if J >= 0 .
+  eq builtin(S, ap(s('Power), E :: 0)) = r(S, 1) [owise] .
+  eq builtin(S, ap(s('Power), E :: 1)) = r(S, E) [owise] .
   ceq builtin(S, ap(s('Power), RA :: J)) = r(S, 1 / (RA ^ (- J)))
     if J < 0 /\ RA =/= 0 .
   eq builtin(S, ap(s('Divide), RA :: RB)) = r(S, RA / RB) .
@@ -614,6 +616,8 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('Or), E)) = r(S, E) .
   eq builtin(S, ap(s('Not), s('True))) = r(S, s('False)) .
   eq builtin(S, ap(s('Not), s('False))) = r(S, s('True)) .
+  eq builtin(S, ap(s('NumberQ), RA)) = r(S, s('True)) .
+  ceq builtin(S, ap(s('NumberQ), E)) = r(S, s('False)) if not (E :: Rat) .
   eq builtin(S, ap(s('EvenQ), I)) = r(S, bool2wl(I rem 2 == 0)) .
   eq builtin(S, ap(s('OddQ), I)) = r(S, bool2wl(I rem 2 =/= 0)) .
   eq builtin(S, ap(s('IntegerQ), I)) = r(S, s('True)) .

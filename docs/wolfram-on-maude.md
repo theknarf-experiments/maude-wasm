@@ -281,17 +281,20 @@ conformance table in `test/wl.test.ts` covers each item below.
       functions, `GroupBy`, `Riffle`, `Tuples`, multi-iterator
       `Table`, nested `Part` specs.
 - [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).
-- [ ] **5.3 Symbolic basics**: `Expand`, `Together` (polynomial-level),
-      `D` (differentiation is a small rule set), `Collect`,
-      `Coefficient` — explicitly *not* `Simplify`/`Integrate`/`Solve`.
-- [ ] **5.4 Bootstrap file format**: `init.wl` parsed and loaded at
-      session start; as much of 5.1/5.3 as possible written in WL/M,
-      making the library its own test suite.
-- [ ] **5.5 Flagship: port a Rubi slice.** Rubi's rule-based
-      integration (pure rewrite rules) — port one chapter (e.g. rational
-      functions) with its test cases. This is the "not a toy" proof and
-      will stress patterns, conditions, and performance like nothing
-      else.
+- [~] **5.3 Symbolic basics.** *Done:* `D` (differentiation) as five
+      rewrite rules in the bootstrap library — sum/product/power/chain
+      basics with `FreeQ` constants; `D[Integrate[x^2, x], x] == x^2`
+      holds. *Pending:* `Expand`, `Together`, `Collect`, `Coefficient`.
+- [x] **5.4 Bootstrap library**: `packages/wolfram/src/stdlib.ts`
+      holds WL-notation definitions parsed and evaluated at session
+      start (evaluateWL and the notebook worker both prepend it); the
+      e2e suite exercises it. Sequence blanks + `Plus[r]`/`Times[r]`
+      OneIdentity collapse stand in for matching modulo Flat (1.2b).
+- [~] **5.5 Flagship: Rubi-style integration.** *Started:* a
+      five-rule slice (constants, powers, linearity, constant factors)
+      in the bootstrap library handles polynomial integration with
+      exact rational coefficients. *Pending:* the actual Rubi rational-
+      functions chapter with its test corpus.
 
 ## Phase 6 — Parser & frontend
 

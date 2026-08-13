@@ -39,7 +39,14 @@ const cases: Array<[string, string]> = [
   ["1 + 2 * 3", "7"],
   ["f[x_] := x + 1; f[41]", "42"],
   [
-    "fib[0] = 0; fib[1] = 1; fib[n_] := fib[n] = fib[n - 1] + fib[n - 2]; fib[30]",
+    "fib[0] = 0; fib[1] = 1; fib[n_] := fib[n] = fib[n - 1] + fib[n - 2  // -- the stdlib: symbolic calculus written in WL/M itself ------------
+  ["D[x^3 + 2*x, x]", "2 + 3*x^2"],
+  ["D[x*y, x]", "y"],
+  ["D[3*x^2 + x*y + 7, x]", "y + 6*x"],
+  ["Integrate[x^2 + 3*x + 5, x]", "1/3*x^3 + 3/2*x^2 + 5*x"],
+  ["D[Integrate[x^2, x], x]", "x^2"],
+  ["Integrate[7, x]", "7*x"],
+]; fib[30]",
     "832040",
   ],
   ["1/2 + 1/3", "5/6"],

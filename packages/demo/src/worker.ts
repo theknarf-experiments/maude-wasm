@@ -3,6 +3,7 @@
 import wasmUrl from "@maude-wasm/core/maude.wasm?url";
 import { formatCore } from "@maude-wasm/wolfram/format";
 import { compileProgram } from "@maude-wasm/wolfram/parser";
+import { stdlib } from "@maude-wasm/wolfram/stdlib";
 import wlSource from "@maude-wasm/wolfram-core/wl.maude?raw";
 import { Maude, type MaudeOptions, runMaude } from "maude-wasm";
 import type { Op, WorkerRequest, WorkerResponse } from "./protocol";
@@ -52,7 +53,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     if (req.kind === "raw") {
       result = await runMaude(req.code, options);
     } else if (req.kind === "wolfram") {
-      const program = compileProgram(req.source);
+      const program = compileProgram(`${stdlib};\n${req.source}`);
       const res = await runMaude(
         `load /wl.maude\nreduce in WL-EVAL : run(${program}) .`,
         { ...options, files: { "/wl.maude": wlSource } },

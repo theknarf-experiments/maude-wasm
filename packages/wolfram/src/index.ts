@@ -3,9 +3,11 @@ import { createRequire } from "node:module";
 import { runMaude } from "maude-wasm";
 import { formatCore } from "./format.js";
 import { compileProgram } from "./parser.js";
+import { stdlib } from "./stdlib.js";
 
 export { formatCore } from "./format.js";
 export { type Ast, compileProgram, parse, toCore, tokenize } from "./parser.js";
+export { stdlib } from "./stdlib.js";
 
 let cachedSource: string | null = null;
 function wlSource(): string {
@@ -38,7 +40,7 @@ export interface WlResult {
  * ```
  */
 export async function evaluateWL(source: string): Promise<WlResult> {
-  const program = compileProgram(source);
+  const program = compileProgram(`${stdlib};\n${source}`);
   const result = await runMaude(
     `load /wl.maude\nreduce in WL-EVAL : run(${program}) .`,
     { files: { "/wl.maude": wlSource() } },
