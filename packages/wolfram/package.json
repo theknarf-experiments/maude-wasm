@@ -1,0 +1,30 @@
+{
+  "name": "@maude-wasm/wolfram",
+  "version": "0.1.0",
+  "description": "Wolfram Language surface syntax for WL/M: parser, formatter, evaluator",
+  "type": "module",
+  "license": "GPL-2.0-or-later",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && vitest run"
+  },
+  "dependencies": {
+    "@maude-wasm/wolfram-core": "workspace:*",
+    "maude-wasm": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

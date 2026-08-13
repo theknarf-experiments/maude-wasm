@@ -94,6 +94,25 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
 
+  packages/wolfram:
+    dependencies:
+      '@maude-wasm/wolfram-core':
+        specifier: workspace:*
+        version: link:../wolfram-core
+      maude-wasm:
+        specifier: workspace:*
+        version: link:../maude
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
+
   packages/wolfram-core:
     devDependencies:
       maude-wasm:

@@ -10,6 +10,10 @@ const config: KnipConfig = {
       entry: [],
       project: [],
     },
+    "packages/wolfram": {
+      entry: ["test/*.test.ts"],
+      project: ["src/**", "test/**"],
+    },
     "packages/wolfram-core": {
       entry: ["test/*.test.ts"],
       project: ["test/**"],

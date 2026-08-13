@@ -287,17 +287,21 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 ## Phase 6 — Parser & frontend
 
-- [ ] **6.1 WL parser in TypeScript** (`packages/wolfram`): full-form
-      target (`a+b` → `Plus[a, b]`); operator precedence table for the
-      practical subset (arithmetic, `->`, `:>`, `/.`, `//.`, `:=`, `=`,
-      `/;`, `&`, `@`, `//`, `@@`, `/@`, `[[...]]`, comparison and
-      logic operators, `;`). Property test: parse→FullForm→parse
-      round-trip.
-- [ ] **6.2 Formatter**: `InputForm`/`FullForm` output from result
-      terms; precedence-aware infix printing back to WL syntax.
-- [ ] **6.3 Session API**: `WolframSession` on top of
-      `MaudeWorkerSession` — `evaluate(input) → {result, messages}`;
-      In/Out history (`%`, `%%`, `Out[n]`).
+- [~] **6.1 WL parser in TypeScript** (`packages/wolfram`). *Done:*
+      tokenizer + Pratt parser covering numbers, strings, symbols,
+      blanks (`x_`, `x__`, `_Integer`…), slots/`&`, `{...}`/`f[...]`,
+      and the operator table (`; = := ^:= // /. //. -> :> /; : | || &&
+      == != < > <= >= /@ @@ + - * / ^ @ !`), with `a/b` and `a-b`
+      compiling through `Times`/`Power`/`Plus`. *Divergences:* no
+      implicit multiplication, no `%`, no `[[...]]` yet. *Pending:*
+      round-trip property test, `[[...]]` Part syntax.
+- [x] **6.2 Formatter**: core result terms print as InputForm with
+      precedence-aware parenthesization (`3*(1 + x)`), lists as
+      `{...}`, slots/`&`, blanks, strings.
+- [~] **6.3 Session API.** *Done:* one-shot `evaluateWL(source)` →
+      `{output, core, stderr}` through parser → engine → formatter.
+      *Pending:* persistent `WolframSession` on `MaudeWorkerSession`,
+      In/Out history.
 - [ ] **6.4 Notebook page in the demo**: cell-based UI (reuse
       CodeMirror/worker/cancel infra), Shift-Enter evaluation, In/Out
       labels; a WL CodeMirror mode.
