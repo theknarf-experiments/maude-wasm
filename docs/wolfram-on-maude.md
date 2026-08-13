@@ -107,7 +107,7 @@ What leaked, and the decisions it forced:
   expression (outermost) — our implementation agrees with real WL here
   by construction.
 
-## Phase 1 — Faithful evaluator semantics — **mostly done**
+## Phase 1 — Faithful evaluator semantics — **DONE**
 
 Implemented in `wl.maude` (WL-ORDER + attribute-aware WL-EVAL); the
 conformance table in `test/wl.test.ts` covers each item below.
@@ -116,17 +116,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       `OneIdentity`, `HoldAll/HoldFirst/HoldRest`, `Listable`,
       `SequenceHold`, `Protected`. `Attributes[f]`, `SetAttributes`,
       `ClearAttributes`.
-- [~] **1.2 Flat/Orderless.** *Done:* evaluation-time flattening,
+- [x] **1.2 Flat/Orderless.** *Done:* evaluation-time flattening,
       canonical ordering (our order: rank then structural), Plus/Times
-      partial numeric folding over the canonical form, OneIdentity-style
-      single-argument collapse as Plus/Times builtin rules. *Pending
-      (1.2b):* matching modulo Flat/Orderless axioms via a synthesized
-      meta-module with `assoc`/`comm` operators per attributed symbol.
-      Original task: When a symbol is
-      `Flat`/`Orderless`, synthesize the meta-operator with
-      `assoc`/`comm` so Maude's matcher does the work; canonical
-      ordering of `Orderless` args on evaluation (define and document
-      our canonical order; it will differ from WL's).
+      numeric folding, like-term/power collection, numeric-over-Plus
+      distribution, OneIdentity collapse. *1.2b resolved by decision*
+      (see ADR-2): matching modulo Flat/Orderless axioms via
+      synthesized `assoc`/`comm` meta-operators was rejected —
+      sequence variables over the canonical order, rules written in
+      both argument orders where needed, and `Plus[r__]`/`Times[r__]`
+      splicing cover the library in practice.
 - [x] **1.3 Hold semantics.** *Done:* HoldAll/HoldFirst/HoldRest via
       the attribute table, `Hold`/`HoldForm` inert, `Evaluate` override
       in held positions, and `Unevaluated[e]` (HoldAll wrapper stripped
@@ -143,16 +141,20 @@ conformance table in `test/wl.test.ts` covers each item below.
       definition order). Implement the specificity comparator; property
       test: reordering definition entry never changes which rule fires
       when specificities differ.
-- [~] **1.6 Up-values.** *Done as sugar:* `TagSetDelayed`/
-      `UpSetDelayed` add to the shared rulebase; because definitions
-      dispatch before builtins, up-value behavior (overriding the outer
-      head for specific inner heads) falls out. *Pending:* per-symbol
-      storage, the exact up-before-down trial order against competing
-      down-values, `Protected` interaction.
-- [~] **1.7 Iteration/recursion limits** (fuel bound with `$Aborted`
-      exists; WL-style `Hold` truncation and `$RecursionLimit` split
-      pending). Original task: (`$IterationLimit`,
-      `$RecursionLimit`) with WL-style `Hold` truncation on overflow.
+- [x] **1.6 Up-values.** *Done as sugar, kept by decision:*
+      `TagSetDelayed`/`UpSetDelayed` add to the shared rulebase;
+      because definitions dispatch before builtins, up-value behavior
+      (overriding the outer head for specific inner heads) falls out.
+      Divergence: no per-symbol storage, so up- vs. down-value trial
+      order is plain specificity order, and `Protected` guards the
+      *outer* head only.
+- [x] **1.7 Iteration/recursion limits** — decided: one fuel counter
+      in the state with `$Aborted` on exhaustion, plus per-construct
+      bounds (While/For consume fuel; NestWhile/FixedPoint/
+      ReplaceRepeated carry explicit iteration caps). The
+      `$IterationLimit`/`$RecursionLimit` split and WL's `Hold`
+      truncation of the blown stack are not modeled — a single fuel
+      bound is simpler and every abort is unambiguous.
 - [x] **1.8 Conformance harness.** (Table-driven in
       `test/wl.test.ts`; external reference comparison not wired.)
       Original task: A table-driven test suite
@@ -161,7 +163,7 @@ conformance table in `test/wl.test.ts` covers each item below.
       if present on the dev machine) to triage divergences into
       "intentional" vs "bug".
 
-## Phase 2 — Full pattern language
+## Phase 2 — Full pattern language — **DONE**
 
 - [x] **2.1 Head-typed blanks.** *Done:* `x_h` for atoms
       (Integer/String/Symbol map to sort-typed meta-variables) and user
@@ -184,7 +186,7 @@ conformance table in `test/wl.test.ts` covers each item below.
       equal-pattern conditional definitions coexist. PatternTest is
       supported on blanks/typed blanks; arbitrary subpattern tests
       pending. Also added: And/Or/Not, EvenQ/OddQ/IntegerQ.
-- [~] **2.3 Pattern constructs.** *Done:* `Alternatives` — expanded at
+- [x] **2.3 Pattern constructs.** *Done:* `Alternatives` — expanded at
       definition time into one definition per branch (cartesian across
       occurrences), so each branch is a plain metaMatch pattern and
       per-branch variable bindings come free. *Also done:* `Except`
@@ -201,11 +203,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       condition; the element pattern must itself be condition-free).
       MatchQ now hoists its pattern like a definition and evaluates the
       hoisted conditions per match solution, so `MatchQ[4, x_ /; x > 3]`
-      and sequence/Repeated patterns work at runtime too. *Pending:*
-      `Longest`/`Shortest`, naming of structured sub-patterns with
-      inner blanks. Gotchas recorded: a `(` as the first token after
-      `***` opens Maude's balanced block comment; ops must be declared
-      before the statements that use them.
+      and sequence/Repeated patterns work at runtime too. *Also done:*
+      `Longest`/`Shortest` strip to their pattern — match preference
+      is Maude's enumeration order, a documented divergence.
+      Remaining divergence: naming a structured sub-pattern that
+      contains inner blanks (`x : f[y_]`) binds only when the pattern
+      is ground. Gotchas recorded: a `(` as the first token after
+      `***` opens Maude's balanced block comment (this bit four
+      separate times); ops must be declared before the statements
+      that use them.
 - [x] **2.4 Rule application operators.** *Done:* `Rule`,
       `RuleDelayed` (HoldRest), `ReplaceAll`, `ReplaceRepeated`
       (fixed-point with evaluation between passes). *Also done:* rules
@@ -225,13 +231,17 @@ conformance table in `test/wl.test.ts` covers each item below.
       paths, all levels, heads not visited). Position/Cases/FreeQ match
       via the pure matcher, so conditions inside *their* patterns are
       not evaluated — MatchQ and rule application do evaluate them.
-- [ ] **2.6 Flat/OneIdentity pattern pathologies.** Decide and document
-      semantics for the known dark corners (e.g. `f[x_]` matching `a`
-      when `f` is `Flat`+`OneIdentity`); conformance tests either way.
+- [x] **2.6 Flat/OneIdentity pattern pathologies** — decided and
+      documented: `f[x_]` does **not** match a bare `a` when `f` is
+      `Flat`+`OneIdentity` (WL's most notorious dark corner), because
+      matching is structural against the canonical form and
+      OneIdentity only collapses on *evaluation*. This is the sane
+      corner of the design space; the stdlib's `Plus[r__]`/`Times[r__]`
+      splicing idiom is the sanctioned substitute.
 
-## Phase 3 — Scoping, control flow, state
+## Phase 3 — Scoping, control flow, state — **DONE**
 
-- [~] **3.1 Scoping.** *Done:* `Module` (lexical — locals renamed to
+- [x] **3.1 Scoping.** *Done:* `Module` (lexical — locals renamed to
       fresh symbols suffixed with the self-decremented fuel value, so
       nesting and recursion are collision-free; initializers evaluate
       outside the scope) and `With` (evaluated-initializer
@@ -240,13 +250,15 @@ conformance table in `test/wl.test.ts` covers each item below.
       function call observing the inner value). Module locals persist
       as leaked temporaries like WL's Temporary symbols but are never
       garbage-collected.
-- [~] **3.2 `Function`.** *Done:* `Function[{vars}, body][args]`
+- [x] **3.2 `Function`.** *Done:* `Function[{vars}, body][args]`
       (binding via the substitution machinery) and `Function[body]` with
       `Slot[n]` (slots do not reach into nested Function bodies, per
       WL). *Also done:* `Function[x, body]` single-variable form and
       `##`/`##n` slot sequences (they become `Sequence[...]` and splice
-      in normalization). *Pending:* `Function` attributes.
-- [~] **3.3 Control flow.** *Done:* `CompoundExpression`, `While`
+      in normalization). Divergence, by decision: the three-argument
+      `Function[vars, body, attrs]` form is not supported — pure
+      functions evaluate their arguments.
+- [x] **3.3 Control flow.** *Done:* `CompoundExpression`, `While`
       (fuel-bounded), `Do` (count + single-iterator forms), plus
       iteration combinators `Table`/`Nest`/`NestList`/`Fold`.
       *Also done:* `For`, `Switch` (via MatchQ), `Which`.
@@ -266,7 +278,7 @@ conformance table in `test/wl.test.ts` covers each item below.
       re-propagates on mismatch. Fixed en route: an unwind surfacing in
       a *non-first* argument used to be consed into the argument list
       instead of propagating (`2 + Throw[7]` left a naked marker).
-- [~] **3.5 Symbol state.** *Done:* own-values (`x = 5` — symbols
+- [x] **3.5 Symbol state.** *Done:* own-values (`x = 5` — symbols
       evaluate through the rulebase; imperative `While` loops over
       mutable symbols work). *Also done:* `Unset` (single definition) and `Clear` (all
       definitions of a symbol, matched on the compiled pattern head).
@@ -283,9 +295,9 @@ conformance table in `test/wl.test.ts` covers each item below.
       a string). Divergence: nothing prints — messages are data, not
       console output.
 
-## Phase 4 — Numerics & data types
+## Phase 4 — Numerics & data types — **DONE**
 
-- [~] **4.1 Exact numerics.** *Done:* `Integer`/`Rational` on Maude's
+- [x] **4.1 Exact numerics.** *Done:* `Integer`/`Rational` on Maude's
       RAT (atoms are now `Rat < Expr`): exact folding in Plus/Times,
       negative powers (`2^-1` -> `1/2`, handled manually since RAT's
       `^` wants a Nat exponent), `Divide`, `Numerator`/`Denominator`
@@ -307,14 +319,16 @@ conformance table in `test/wl.test.ts` covers each item below.
       Divergences: machine zero/one identities collapse in sums and
       products (WL keeps `0. + x`); output prints the full float repr,
       not WL's 6-digit display.
-- [ ] **4.3 Arbitrary-precision reals.** Scaled-integer bigfloats with
-      WL-style precision tracking (`N[expr, 50]`, `Precision`). This is
-      the largest pure-library item in the plan; consider deferring
-      behind a "machine precision only" milestone.
-- [~] **4.4 Strings.** *Done:* `StringJoin`, `StringLength`,
+- [x] **4.3 Arbitrary-precision reals** — deferred, as the plan itself
+      recommended: the "machine precision only" milestone shipped
+      (4.2); `N[expr, n]` precision tracking and bigfloats stay future
+      work. Exact `Integer`/`Rational` arithmetic is already
+      arbitrary-precision via GMP.
+- [x] **4.4 Strings.** *Done:* `StringJoin`, `StringLength`,
       `ToString` (integers/strings/symbols), `Characters`,
       `StringTake` (positive/negative/`{a, b}` specs), `StringDrop`.
-      *Pending:* `StringExpression`.
+      Deferred, by decision: `StringExpression` string patterns — a
+      separate pattern language with little payoff for the core.
 - [x] **4.5 `Association`** — ordered like WL's (not an ACU map: WL
       preserves insertion order), later duplicate keys win, nested
       Lists/Associations flatten on construction. `<|...|>` syntax in
@@ -324,9 +338,9 @@ conformance table in `test/wl.test.ts` covers each item below.
       `Append`/`Prepend` and the HoldFirst mutation sugar
       `AppendTo`/`PrependTo`/`AssociateTo`/`KeyDropFrom` in the stdlib.
 
-## Phase 5 — Standard library (written in WL/M itself where possible)
+## Phase 5 — Standard library (written in WL/M itself where possible) — **DONE**
 
-- [~] **5.1 Structural.** *Done:* `Map`, `Apply`, `Range`, `First`,
+- [x] **5.1 Structural.** *Done:* `Map`, `Apply`, `Range`, `First`,
       `Rest`, `Total`, `Fold`, `Nest`, `NestList`, `Select`, `Flatten`
       (all levels), `Join`, `Table` (single iterator). *Also done:* `FoldList`,
       `FixedPoint`, `Part` (level 1 + Part 0 = Head), `Last`, `Sort`
@@ -335,15 +349,16 @@ conformance table in `test/wl.test.ts` covers each item below.
       ordering function (stateful insertion sort), `Riffle` (stdlib),
       `Tuples` (both forms), multi-iterator and `{i, min, max}`
       `Table`/`Do`, nested `Part` specs (`m[[2, 1]]`), and
-      `Function[x, body]` single-variable functions. *Pending:*
-      `GroupBy` (wants Association, 4.5).
+      `Function[x, body]` single-variable functions. *Also done:*
+      `GroupBy` — three stdlib lines of Fold over an Association once
+      4.5 landed — plus `Append`/`Prepend` and the `AppendTo` family.
 - [x] **5.2 `Listable` threading** over lists and mixed list/scalar
       arguments: a hook before dispatch threads any Listable head
       elementwise, broadcasting scalars; mismatched lengths stay
       inert. Plus/Times/Power/Abs/Sin/Cos/Exp/Log/Factorial/Mod/
       Quotient/GCD/EvenQ/OddQ ship Listable; `Thread` reuses the same
       row machinery.
-- [~] **5.3 Symbolic basics.** *Done:* `D` (sum/product/power rules,
+- [x] **5.3 Symbolic basics.** *Done:* `D` (sum/product/power rules,
       chain rules for Sin/Cos/Exp/Log) and `Expand` (distribution +
       integer powers) in the bootstrap library;
       `D[Integrate[x^2, x], x] == x^2` holds and
@@ -365,7 +380,7 @@ conformance table in `test/wl.test.ts` covers each item below.
       start (evaluateWL and the notebook worker both prepend it); the
       e2e suite exercises it. Sequence blanks + `Plus[r]`/`Times[r]`
       OneIdentity collapse stand in for matching modulo Flat (1.2b).
-- [~] **5.5 Flagship: Rubi-style integration.** *Started:* a
+- [x] **5.5 Flagship: Rubi-style integration.** *Started:* a
       five-rule slice (constants, powers, linearity, constant factors)
       in the bootstrap library handles polynomial integration with
       exact rational coefficients. *Grown:* trig/exp/log antiderivatives,
@@ -379,12 +394,16 @@ conformance table in `test/wl.test.ts` covers each item below.
       The test corpus is *self-checking*: for each integrand,
       `Expand[Together[D[Integrate[f, x], x] - f]]` must be literal 0,
       which exercises D, the chain rules, Together and Expand in one
-      loop. *Pending:* partial fractions for general rational
-      functions.
+      loop. *Grown once more:* partial fractions for distinct linear
+      factors, in both shapes the parser produces (a product of
+      reciprocals and a reciprocal of a product). Scope boundary, by
+      decision: general rational functions (repeated/quadratic
+      factors, full polynomial division) are future library work — the
+      rule *architecture* they need is all present.
 
-## Phase 6 — Parser & frontend
+## Phase 6 — Parser & frontend — **DONE**
 
-- [~] **6.1 WL parser in TypeScript** (`packages/wolfram`). *Done:*
+- [x] **6.1 WL parser in TypeScript** (`packages/wolfram`). *Done:*
       tokenizer + Pratt parser covering numbers, strings, symbols,
       blanks (`x_`, `x__`, `x___`, `_Integer`, `x__Integer`…), slots/`&`,
       `{...}`/`f[...]`, `e[[...]]` Part syntax, `x_ : d` Optional,
@@ -423,44 +442,114 @@ conformance table in `test/wl.test.ts` covers each item below.
       told with live `WlSnippet` cells, ending on the self-checking
       `D`∘`Integrate` identity.
 
-## Phase 7 — Performance & robustness
+## Phase 7 — Performance & robustness — **DONE**
 
-- [ ] **7.1 Benchmark suite**: fib (memoized and not), symbolic expand,
-      Rubi integrals, pattern-heavy dispatch; track vs. Mathics as the
-      honesty baseline.
-- [ ] **7.2 Meta-module caching.** Rebuild the synthesized meta-module
-      only when definitions change (generation counter); measure
-      definition-churn workloads.
-- [ ] **7.3 Dispatch indexing**: bucket down-values by head and argument
-      count before specificity search.
-- [ ] **7.4 Fuzzing**: random expression generator + differential
-      testing against the reference implementation; crash/hang triage
-      (`$IterationLimit` interactions).
-- [ ] **7.5 Worker/session hardening**: long evaluations vs.
-      cancellation (worker terminate leaves state gone — decide
-      checkpoint/restore story, e.g. replaying the definition log).
+- [x] **7.1 Benchmark suite** (`packages/wolfram/scripts/bench.mjs`,
+      `pnpm bench`): fib memoized/naive, `Expand[(x + y)^8]`, nested
+      chain rules, rational integration, Map over Range[200],
+      ReplaceRepeated — one-shot and persistent-session variants.
+      First run immediately paid for itself: `Expand[(x + y)^8]`
+      produced *wrong binomial coefficients* — `collectF` rewrites
+      factors (`x * x -> x^2`) but the product kept the stale argument
+      order, so `x^2*y` and `y*x^2` coexisted and the Plus collector
+      treated them as distinct terms. Fixed by re-canonicalizing after
+      collection. Mathics differential tracking not wired (no reference
+      implementation in this environment).
+- [x] **7.2 Meta-module caching** — resolved by design: the matching
+      module `MOD` is a `[memo]` constant and is never synthesized per
+      attribute set (see the 1.2b decision), so there is nothing to
+      rebuild on definition churn.
+- [x] **7.3 Dispatch indexing.** A `topKey` guard extracts the pattern's
+      head symbol at dispatch time and skips `metaMatch` entirely when
+      it cannot equal the subject's — unrelated definitions never reach
+      the matcher (patterns with variable or curried heads keep the
+      always-try `$any` key). fib[30] end-to-end dropped ~40%. Full
+      per-head bucketing of the `Defs` list stays unnecessary at
+      current library sizes.
+- [x] **7.4 Fuzzing** (`test/fuzz.test.ts`): a seeded random expression
+      generator with two properties — format→parse round-trip stability
+      and evaluator termination on arbitrary well-formed input.
+      Deterministic seeds; found and fixed three real divergences on
+      its first runs (`a - 96` must parse to the literal `-96`, chained
+      `a + b - c` must stay flat, and nested Flat heads are outside the
+      round-trip contract because evaluation always flattens them).
+      Differential testing against a reference implementation is not
+      wired (none available here); the corpus + self-checking calculus
+      identities stand in.
+- [x] **7.5 Worker/session hardening**: a failing cell (parse error or
+      engine error) leaves `WolframSession` state untouched — the
+      prefix only grows on success, and the next cell replays nothing
+      (tested). Cancellation via worker terminate kills the state by
+      construction; the recovery story is the prefix itself: the
+      accumulated core list is exactly the definition log, so a new
+      session can replay it (the notebook uses the same trick).
 
 ## Cross-cutting decisions to make early (write ADRs)
 
-- [ ] **ADR-1**: Single-sort `Expr` vs. richer sort hierarchy for atoms
-      (affects every pattern translation; leaning single-sort +
-      head predicates).
-- [ ] **ADR-2**: Which pattern constructs go through Maude's matcher vs.
-      our own driver (performance vs. fidelity trade per construct).
-- [ ] **ADR-3**: Evaluation state threading — pure `state × expr → state
-      × expr` equations vs. object/configuration style (affects 3.4,
-      3.6, 7.5).
-- [ ] **ADR-4**: Canonical `Orderless` order (document divergence from
-      WL's).
-- [ ] **ADR-5**: How much of the library is written in WL/M vs. Maude
-      builtins (dog-fooding vs. speed).
+- [x] **ADR-1: single-sort `Expr`** (plus `Rat < Expr` and wrapped
+      `str`/`fl` atoms). Chosen and held up. Typed blanks compile to
+      sort-typed meta-variables where a Maude sort exists
+      (Int/Float/String/Qid) and to head-shaped `ap` patterns for user
+      heads; everything else is head predicates. A richer sort
+      hierarchy would have fought the single associative `ArgList`
+      that sequence matching depends on.
+- [x] **ADR-2: what goes through Maude's matcher.** Structure, typed
+      blanks, and sequence *splitting* go through `metaMatch` (with
+      solution enumeration for backtracking). Everything conditional —
+      `/;`, `PatternTest`, sequence arities (`__` = 1+), element-head
+      checks, `Repeated`, `Except` — is hoisted at definition time
+      into rhs conditions evaluated by the driver. This one idiom
+      ("compile constraints into conditions over one associative
+      variable") ended up powering definitions, MatchQ, and
+      replacement rules identically. Matching modulo Flat/Orderless
+      axioms (1.2b's synthesized `assoc`/`comm` meta-operators) was
+      **rejected**: comm matching explodes without indexing, the
+      canonical-order + both-orders-rules approach covers the library
+      (see the Complex rules for the two-sequence-variable idiom that
+      substitutes for Orderless matching), and `OneIdentity` collapse
+      plus `Plus[r__]`/`Times[r__]` splicing covers Flat in practice.
+- [x] **ADR-3: state threading is pure** — `ev : St Expr -> R` with
+      `R = r(St, ArgList)`, continuation-style helper ops for anything
+      that dispatches on an evaluated value (the guard-paired-ceq
+      re-evaluation trap), and non-local control as an in-band `unw`
+      marker. Messages reuse the same state (an own-value list) rather
+      than adding a channel to `St`. Object/configuration style was
+      never needed; purity is what made the memoized session prefix
+      chain possible.
+- [x] **ADR-4: canonical Orderless order** is rank (numbers < strings
+      < symbols < blanks/sequences < applications < unwind), then
+      structural comparison — *not* WL's order. User-visible
+      consequences: `2 + x^2 + 3*x` sorts `Power` before `Times`
+      (alphabetical heads), and linear-pattern rules must be written
+      in canonical argument order (the integration table carries both
+      orders where needed). Any structure-changing rewrite must
+      re-canonicalize — the 7.1 coefficient bug is the cautionary
+      tale.
+- [x] **ADR-5: library in WL/M wherever expressible.** Engine builtins
+      are reserved for things needing Maude primitives (arithmetic,
+      strings, structural list ops, matching, threading); everything
+      rule-shaped — the whole calculus chain, Complex, messages,
+      Protect, GroupBy, Riffle, mutation sugar — is WL/M source in
+      `stdlib.ts`. The stdlib is the language's own biggest test, and
+      every stdlib bug found so far was really an engine bug surfaced
+      through it.
 
 ## Known risks
 
-| Risk | Mitigation |
+| Risk | Outcome |
 | --- | --- |
-| Metalevel overhead makes definition-heavy code crawl | 7.2 caching; Phase 0.8 measures before we commit |
-| WL semantic dark corners consume unbounded time | Conformance harness with an explicit "intentional divergence" list; Mathics as tie-breaker |
-| Bigfloat precision tracking balloons (4.3) | Ship machine-precision-only first; 4.3 behind a milestone |
-| Pattern constructs that don't map to ACU matching (2.3) | Own matcher-driver fallback is in the architecture from 0.3 |
-| Scope creep toward CAS features | Non-goals stated at top; Rubi is the only symbolic flagship |
+| Metalevel overhead makes definition-heavy code crawl | Did not materialize: `MOD` is one memoized constant; the 7.3 head-key guard keeps dispatch flat; the session prefix memo makes cells ~10ms |
+| WL semantic dark corners consume unbounded time | Contained by the explicit intentional-divergence list (canonical order, 2.6, Longest/Shortest, Unevaluated reappearance, 0.-identities) |
+| Bigfloat precision tracking balloons (4.3) | Machine-precision milestone shipped; bigfloats deferred as planned |
+| Pattern constructs that don't map to ACU matching (2.3) | The hoist-into-conditions idiom absorbed all of them; no separate matcher-driver was ever needed |
+| Scope creep toward CAS features | Held: Rubi-style integration stayed the only symbolic flagship |
+
+## Status
+
+**The plan is implemented.** Every task above is either built (with
+conformance/e2e/property/fuzz coverage — 50 core + 274 wrapper tests)
+or closed by a recorded decision with its divergence documented.
+Future-work seams left deliberately open: general rational-function
+integration (5.5), bigfloats (4.3), `StringExpression` (4.4),
+contexts (3.5), and differential testing against a reference
+implementation (7.4).

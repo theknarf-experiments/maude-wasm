@@ -61,6 +61,16 @@ Integrate[x_ * (b_ + x_)^-1, x_] := x - b * Log[b + x] /; FreeQ[b, x];
 Integrate[x_ * (b_ + a_ * x_)^-1, x_] :=
   x * (1/a) - (b/a^2) * Log[b + a*x] /; FreeQ[{a, b}, x];
 
+(* partial fractions for distinct linear factors, in both shapes the
+   parser produces: a product of reciprocals and a reciprocal of a
+   product *)
+Integrate[(b1_ + x_)^-1 * (b2_ + x_)^-1, x_] :=
+  (Log[b1 + x] - Log[b2 + x]) * (1/(b2 - b1)) /;
+    FreeQ[{b1, b2}, x] && b1 != b2;
+Integrate[((b1_ + x_) * (b2_ + x_))^-1, x_] :=
+  (Log[b1 + x] - Log[b2 + x]) * (1/(b2 - b1)) /;
+    FreeQ[{b1, b2}, x] && b1 != b2;
+
 (* fall back to expanding the integrand, retrying once it changes *)
 Integrate[e_, x_] := Integrate[Expand[e], x] /; !(e === Expand[e]);
 
@@ -104,6 +114,9 @@ SetAttributes[Unprotect, HoldAll];
 Unprotect[f_] := ClearAttributes[f, Protected];
 
 (* list utilities *)
+GroupBy[l_, f_] :=
+  Fold[Function[{acc, e},
+    Association[acc, f[e] -> Append[Lookup[acc, f[e], {}], e]]], <||>, l];
 Riffle[{}, s_] := {};
 Riffle[{x_}, s_] := {x};
 Riffle[{x_, r__}, s_] := Join[{x, s}, Riffle[{r}, s]];

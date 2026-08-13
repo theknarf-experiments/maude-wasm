@@ -362,6 +362,10 @@ fmod WL-EVAL is
   eq hoistE(ap(s('RepeatedNull), E), N)
     = hpc(?? qid("$rep" + string(N, 10)),
           allMC(qid("$rep" + string(N, 10)), E), noBnds, N + 1) .
+  *** Longest/Shortest strip to their pattern: match preference is
+  *** Maude's enumeration order, not WL's (documented divergence)
+  eq hoistE(ap(s('Longest), E), N) = hoistE(E, N) .
+  eq hoistE(ap(s('Shortest), E), N) = hoistE(E, N) .
   *** Optional's absent branch (from xAltE): match nothing, pre-bind the
   *** default into the rhs
   op absO : Qid Expr -> Expr .
@@ -401,6 +405,8 @@ fmod WL-EVAL is
   eq isPatOp(s('Repeated)) = true .
   eq isPatOp(s('RepeatedNull)) = true .
   eq isPatOp(s('Optional)) = true .
+  eq isPatOp(s('Longest)) = true .
+  eq isPatOp(s('Shortest)) = true .
   eq isPatOp(E) = false [owise] .
 
   op mkAnd : ArgList -> Expr .
@@ -476,7 +482,7 @@ fmod WL-EVAL is
     if hpc(L2, Cs, B, N1) := hoistE(L, 0) /\
        P := compileP(L2) /\
        Rh2 := wrapCond(sbE(Rh, B), sbA(Cs, B)) .
-  var L2 : Expr . var Cs Cs1 Cs2 A0 : ArgList .
+  var L2 : Expr . var Cs Cs1 Cs2 A0 A2 : ArgList .
   var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
   var Ini Inc Body : Expr . var C : Constant . var NeTL : NeTermList .
   var NZ : NzNat . var At2 : Attrs . var Ds2 : Defs .
@@ -651,20 +657,31 @@ fmod WL-EVAL is
   eq apply(st(Ds, At, 0), E) = r(st(Ds, At, 0), s('$Aborted)) .
   ceq apply(st(Ds, At, N), E) = tryDefs(st(Ds, At, N), subj(E), Ds, E) if N > 0 .
 
+  *** dispatch guard: only attempt a metaMatch when the pattern's top
+  *** symbol can possibly match the subject's - a cheap index that
+  *** keeps unrelated definitions out of the matcher
+  op topKey : Term -> Qid .
+  eq topKey('ap['s[C], NeTL]) = getName(C) .
+  eq topKey('s[C]) = getName(C) .
+  eq topKey(T) = '$any [owise] .
+  op keyOk : Term Term -> Bool .
+  eq keyOk(P, UM)
+    = topKey(P) == '$any or topKey(UM) == '$any or topKey(P) == topKey(UM) .
+
   *** first (most specific) definition whose pattern matches wins; a
   *** conditional rhs evaluates its condition first and falls through to
   *** later definitions unless it yields True; a successful application
   *** consumes fuel and re-evaluates
   ceq tryDefs(st(Ds0, At, s N), UM, d(P, ap(s('Condition), Rh :: Cnd)) | Ds, E)
     = condBr(S1, V, sbE(Rh, s2b(Sb)), UM, Ds, E)
-    if Sb := metaMatch(MOD, P, UM, nil, 0) /\
+    if keyOk(P, UM) /\ Sb := metaMatch(MOD, P, UM, nil, 0) /\
        r(S1, V) := ev(st(Ds0, At, N), sbE(Cnd, s2b(Sb))) .
   op condBr : St Expr Expr Term Defs Expr -> R .
   eq condBr(S, s('True), Rh, UM, Ds, E) = retB(ev(S, Rh)) .
   eq condBr(S, V, Rh, UM, Ds, E) = tryDefs(S, UM, Ds, E) [owise] .
   ceq tryDefs(st(Ds0, At, s N), UM, d(P, Rh) | Ds, E)
     = retB(ev(st(Ds0, At, N), sbE(Rh, s2b(Sb))))
-    if not isCondRhs(Rh) /\ Sb := metaMatch(MOD, P, UM, nil, 0) .
+    if not isCondRhs(Rh) /\ keyOk(P, UM) /\ Sb := metaMatch(MOD, P, UM, nil, 0) .
   op isCondRhs : Expr -> Bool .
   eq isCondRhs(ap(s('Condition), A)) = true .
   eq isCondRhs(E) = false [owise] .
@@ -850,11 +867,24 @@ fmod WL-EVAL is
   ceq timesOut(RA, E :: E1 :: A) = ap(s('Times), E :: E1 :: A) if RA == 1 .
   ceq timesOut(RA, A) = ap(s('Times), RA :: A)
     if RA =/= 0 /\ RA =/= 1 /\ lenA(A) >= 1 .
+  *** collectF rewrites factors (x * x -> x^2), so the argument order
+  *** must be re-canonicalized before rebuilding the product - stale
+  *** order would make x^2*y and y*x^2 distinct to the Plus collector.
+  *** A numeric coefficient distributes over a Plus factor, as in WL:
+  *** -1*{x + y} becomes -x - y, which is what makes a - a cancel.
+  op scaleP : Rat ArgList -> ArgList .
+  eq scaleP(RA, nilA) = nilA .
+  eq scaleP(RA, E :: A) = ap(s('Times), RA :: E) :: scaleP(RA, A) .
+  op timesFin : St Rat ArgList -> R .
+  ceq timesFin(S, RA, A :: ap(s('Plus), A1) :: A2)
+    = ev(S, ap(s('Times), A :: ap(s('Plus), scaleP(RA, A1)) :: A2))
+    if RA =/= 1 /\ RA =/= 0 .
+  eq timesFin(S, RA, A) = r(S, timesOut(RA, A)) [owise] .
   ceq builtin(S, ap(s('Times), A))
-    = r(S, timesOut(prodRat(A), dropOnes(collectF(nonRatA(A)))))
+    = timesFin(S, prodRat(A), sortA(dropOnes(collectF(nonRatA(A)))))
     if not anyFl(A) .
   ceq builtin(S, ap(s('Times), A))
-    = r(S, timesFlOut(prodFl(A), dropOnes(collectF(nonNumA(A)))))
+    = r(S, timesFlOut(prodFl(A), sortA(dropOnes(collectF(nonNumA(A))))))
     if anyFl(A) .
 
   ceq builtin(S, ap(s('Power), fl(FL) :: fl(FL2))) = r(S, fl(FL ^ FL2)) if true .

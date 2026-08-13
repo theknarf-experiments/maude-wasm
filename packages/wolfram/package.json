@@ -28,7 +28,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && vitest run"
+    "test": "tsc -p tsconfig.json && vitest run",
+    "bench": "node scripts/bench.mjs"
   },
   "dependencies": {
     "@maude-wasm/wolfram-core": "workspace:*",

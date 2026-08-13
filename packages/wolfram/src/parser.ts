@@ -394,19 +394,30 @@ function mkInfix(op: string, lhs: Ast, rhs: Ast): Ast {
       }
       return { kind: "apply", head: sym("Pattern"), args: [lhs, rhs] };
     case "$Minus": {
-      // -1 folds into an existing Times, as in WL: a - b*c
-      // parses to Plus[a, Times[-1, b, c]]
-      const negArgs =
-        rhs.kind === "apply" &&
-        rhs.head.kind === "symbol" &&
-        rhs.head.name === "Times"
-          ? [int("-1"), ...rhs.args]
-          : [int("-1"), rhs];
-      return {
-        kind: "apply",
-        head: sym("Plus"),
-        args: [lhs, { kind: "apply", head: sym("Times"), args: negArgs }],
-      };
+      // as in WL: a - 96 is Plus[a, -96], a - b*c is
+      // Plus[a, Times[-1, b, c]], and a chained sum stays flat
+      const neg: Ast =
+        rhs.kind === "int" || rhs.kind === "real"
+          ? rhs.value.startsWith("-")
+            ? { ...rhs, value: rhs.value.slice(1) }
+            : { ...rhs, value: `-${rhs.value}` }
+          : {
+              kind: "apply",
+              head: sym("Times"),
+              args:
+                rhs.kind === "apply" &&
+                rhs.head.kind === "symbol" &&
+                rhs.head.name === "Times"
+                  ? [int("-1"), ...rhs.args]
+                  : [int("-1"), rhs],
+            };
+      const lhsArgs =
+        lhs.kind === "apply" &&
+        lhs.head.kind === "symbol" &&
+        lhs.head.name === "Plus"
+          ? lhs.args
+          : [lhs];
+      return { kind: "apply", head: sym("Plus"), args: [...lhsArgs, neg] };
     }
     case "$Divide": {
       // a*b/c flattens into one Times, 1/x is a bare Power, and a

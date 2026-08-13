@@ -14,9 +14,7 @@ describe("parser", () => {
     expect(compileProgram("a/b")).toBe(
       "ap(s('Times), s('a) :: ap(s('Power), s('b) :: -1))",
     );
-    expect(compileProgram("n - 1")).toBe(
-      "ap(s('Plus), s('n) :: ap(s('Times), -1 :: 1))",
-    );
+    expect(compileProgram("n - 1")).toBe("ap(s('Plus), s('n) :: -1)");
   });
 
   it("compiles patterns, conditions, rules", () => {
@@ -59,7 +57,13 @@ const cases: Array<[string, string]> = [
   ["Table[n^2, {n, 4}]", "{1, 4, 9, 16}"],
   ['Cases[{1, a, 2, "x", 3}, _Integer]', "{1, 2, 3}"],
   ['h[Except[0]] := "nonzero"; {h[7], h[0]}', '{"nonzero", h[0]}'],
-  ["expand[n_] := n * (x + 1); expand[3]", "3*(1 + x)"],
+  // numeric coefficients distribute over sums, as in WL
+  ["expand[n_] := n * (x + 1); expand[3]", "3 + 3*x"],
+  ["-1*(x + y)", "-x - y"],
+  ["Expand[(x + y)^5] - Expand[(x + y)^5]", "0"],
+  ["Expand[(x + y)^8] /. {x -> 1, y -> 1}", "256"],
+  ["Integrate[1/((x + 1)*(x + 2)), x]", "Log[1 + x] - Log[2 + x]"],
+  ["GroupBy[Range[6], EvenQ]", "<|False -> {1, 3, 5}, True -> {2, 4, 6}|>"],
   ["{10, 20, 30}[[2]]", "20"],
   [
     'f[x_] := (If[x > 10, Return["big"]]; "small"); {f[20], f[1]}',
@@ -237,6 +241,7 @@ const integrands = [
   "Exp[3*x + 2]",
   "x/(x + 1)",
   "x/(2*x + 1)",
+  "1/((x + 1)*(x + 2))",
 ];
 
 describe("WolframSession", () => {
@@ -249,6 +254,18 @@ describe("WolframSession", () => {
       expect((await s.evaluate("Out[2] * 2")).output).toBe("288");
       expect(s.history).toHaveLength(4);
       expect(s.history[1]).toMatchObject({ input: "f[12]", output: "144" });
+    } finally {
+      s.close();
+    }
+  });
+
+  it("survives a bad cell and keeps prior state", async () => {
+    const s = await WolframSession.create();
+    try {
+      await s.evaluate("v = 41");
+      await expect(s.evaluate("1 +")).rejects.toThrow();
+      expect((await s.evaluate("v + 1")).output).toBe("42");
+      expect(s.history).toHaveLength(2);
     } finally {
       s.close();
     }
