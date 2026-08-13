@@ -149,6 +149,17 @@ function fmt(core: Core, parentPrec: number): string {
       if (headSym === "Function" && core.args.length === 1) {
         return `${fmt(core.args[0], 26)} &`;
       }
+      if (headSym === "Plus" && core.args.length >= 2) {
+        const prec = INFIX_FORMS.Plus.prec;
+        let body = "";
+        for (let i = 0; i < core.args.length; i++) {
+          const { neg, term } = negSplit(core.args[i]);
+          const text = fmt(term, prec + 1);
+          if (i === 0) body = neg ? `-${text}` : text;
+          else body += neg ? ` - ${text}` : ` + ${text}`;
+        }
+        return parentPrec > prec ? `(${body})` : body;
+      }
       if (headSym && INFIX_FORMS[headSym] && core.args.length >= 2) {
         const { op, prec } = INFIX_FORMS[headSym];
         const body = core.args.map((a) => fmt(a, prec + 1)).join(op);
@@ -161,6 +172,32 @@ function fmt(core: Core, parentPrec: number): string {
       return `${head}[${core.args.map((a) => fmt(a, 0)).join(", ")}]`;
     }
   }
+}
+
+/** Split a Plus term into sign and magnitude for pretty printing. */
+function negSplit(core: Core): { neg: boolean; term: Core } {
+  if (core.kind === "num" && core.value.startsWith("-")) {
+    return { neg: true, term: { kind: "num", value: core.value.slice(1) } };
+  }
+  if (
+    core.kind === "apply" &&
+    core.head.kind === "symbol" &&
+    core.head.name === "Times" &&
+    core.args.length >= 2 &&
+    core.args[0].kind === "num" &&
+    core.args[0].value.startsWith("-")
+  ) {
+    const abs = core.args[0].value.slice(1);
+    const rest = core.args.slice(1);
+    const factors: Core[] =
+      abs === "1" ? rest : [{ kind: "num", value: abs }, ...rest];
+    const term: Core =
+      factors.length === 1
+        ? factors[0]
+        : { kind: "apply", head: core.head, args: factors };
+    return { neg: true, term };
+  }
+  return { neg: false, term: core };
 }
 
 /** Format a WL/M core result term as Wolfram InputForm. */

@@ -289,7 +289,11 @@ conformance table in `test/wl.test.ts` covers each item below.
       now collects like terms by symbolic part (2x + 3x -> 5x, exact
       rational coefficients) and Times collects powers by base
       (x * x^2 -> x^3) — WL's automatic arithmetic canonicalization.
-      *Pending:* `Together`, `Collect`, `Coefficient`.
+      *Also done:* `Coefficient[e, x, n]`
+      (over the expanded form) and special values (`Sin[0]`, `Cos[0]`,
+      `Exp[0]`, `Log[1]`). The formatter prints subtractions
+      (`x^2 - y^2`, not `x^2 + -1*y^2`). *Pending:* `Together`,
+      `Collect`.
 - [x] **5.4 Bootstrap library**: `packages/wolfram/src/stdlib.ts`
       holds WL-notation definitions parsed and evaluated at session
       start (evaluateWL and the notebook worker both prepend it); the
@@ -298,8 +302,11 @@ conformance table in `test/wl.test.ts` covers each item below.
 - [~] **5.5 Flagship: Rubi-style integration.** *Started:* a
       five-rule slice (constants, powers, linearity, constant factors)
       in the bootstrap library handles polynomial integration with
-      exact rational coefficients. *Pending:* the actual Rubi rational-
-      functions chapter with its test corpus.
+      exact rational coefficients. *Grown:* trig/exp/log antiderivatives,
+      `x^-1 -> Log[x]`, and the Rubi-signature expand-and-retry
+      fallback rule (`Integrate[e_, x_] := Integrate[Expand[e], x] /;
+      !(e === Expand[e])`), so `Integrate[(x+1)^2, x]` works. *Pending:*
+      the actual Rubi rational-functions chapter with its test corpus.
 
 ## Phase 6 — Parser & frontend
 
