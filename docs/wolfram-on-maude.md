@@ -302,9 +302,13 @@ conformance table in `test/wl.test.ts` covers each item below.
       `{output, core, stderr}` through parser → engine → formatter.
       *Pending:* persistent `WolframSession` on `MaudeWorkerSession`,
       In/Out history.
-- [ ] **6.4 Notebook page in the demo**: cell-based UI (reuse
-      CodeMirror/worker/cancel infra), Shift-Enter evaluation, In/Out
-      labels; a WL CodeMirror mode.
+- [x] **6.4 Notebook page in the demo** (`/wolfram`): cell-based UI
+      with In/Out labels, Shift-Enter evaluation, add-cell, cancel; a
+      minimal WL CodeMirror mode; parsing/formatting run in the worker
+      (browser-safe `./parser` and `./format` subpath exports). Cells
+      share a session by replaying the cells above the evaluated one —
+      GitHub Pages lacks the cross-origin-isolation headers a
+      persistent MaudeWorkerSession would need.
 - [ ] **6.5 Tutorial chapter** ("Building a language on Maude") telling
       the story with live cells.
 

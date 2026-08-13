@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
 
 import wasmUrl from "@maude-wasm/core/maude.wasm?url";
+import { formatCore } from "@maude-wasm/wolfram/format";
+import { compileProgram } from "@maude-wasm/wolfram/parser";
+import wlSource from "@maude-wasm/wolfram-core/wl.maude?raw";
 import { Maude, type MaudeOptions, runMaude } from "maude-wasm";
 import type { Op, WorkerRequest, WorkerResponse } from "./protocol";
 
@@ -48,6 +51,16 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     let result: unknown;
     if (req.kind === "raw") {
       result = await runMaude(req.code, options);
+    } else if (req.kind === "wolfram") {
+      const program = compileProgram(req.source);
+      const res = await runMaude(
+        `load /wl.maude\nreduce in WL-EVAL : run(${program}) .`,
+        { ...options, files: { "/wl.maude": wlSource } },
+      );
+      const match = /^result [^:]+: (.*)$/m.exec(res.stdout);
+      if (!match)
+        throw new Error(`evaluation failed:\n${res.stderr || res.stdout}`);
+      result = { output: formatCore(match[1]) };
     } else {
       const m = new Maude(options);
       if (req.setup.trim()) await m.load(req.setup);

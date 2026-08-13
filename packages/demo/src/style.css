@@ -382,3 +382,46 @@ nav.pager a:hover {
 .repo-link:hover {
   border-color: color-mix(in srgb, currentColor 40%, transparent);
 }
+
+.notebook {
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.notebook .blurb {
+  opacity: 0.8;
+  margin: 0.25rem 0 1.25rem;
+}
+
+.cell {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.cell-label {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  opacity: 0.55;
+  padding-top: 0.5rem;
+  text-align: right;
+}
+
+.cell-label.out {
+  padding-top: 0;
+  text-align: left;
+  margin-bottom: 0.2rem;
+}
+
+.add-cell {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.3rem;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  margin-left: 5rem;
+}

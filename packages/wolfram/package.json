@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./parser": {
+      "types": "./dist/parser.d.ts",
+      "default": "./dist/parser.js"
+    },
+    "./format": {
+      "types": "./dist/format.d.ts",
+      "default": "./dist/format.js"
     }
   },
   "files": [
