@@ -206,16 +206,25 @@ conformance table in `test/wl.test.ts` covers each item below.
       inner blanks. Gotchas recorded: a `(` as the first token after
       `***` opens Maude's balanced block comment; ops must be declared
       before the statements that use them.
-- [~] **2.4 Rule application operators.** *Done:* `Rule`,
+- [x] **2.4 Rule application operators.** *Done:* `Rule`,
       `RuleDelayed` (HoldRest), `ReplaceAll`, `ReplaceRepeated`
-      (fixed-point with evaluation between passes). *Pending:* `Replace`
-      with level specs; conditions inside replacement rules. Fixed en
+      (fixed-point with evaluation between passes). *Also done:* rules
+      now compile exactly like definitions (lhs `Condition` /
+      `PatternTest` / sequence constraints hoist into an rhs
+      `Condition`), and the replacement walk is state-aware — rule
+      conditions evaluate per match solution with backtracking, so
+      `l /. x_ /; x > 3 -> big` and `l /. {x__Integer} :> Plus[x]`
+      work. `Replace[e, rules, levelspec]` supports the standard specs
+      `n` / `{n}` / `{a, b}` / `Infinity` (default `{0}`). Fixed en
       route: attribute-driven HoldRest double-prepended the first
       argument (If/Set are special-cased, so RuleDelayed was the first
       real exerciser).
-- [~] **2.5 Pattern predicates.** *Done:* `MatchQ`, `FreeQ` (full
-      recursive), `Cases`/`Count` at level 1. *Pending:* `Position` and
-      general level specifications.
+- [x] **2.5 Pattern predicates.** *Done:* `MatchQ`, `FreeQ` (full
+      recursive), `Cases`/`Count` at level 1, `Cases` with level specs
+      (pre-order, matched nodes not descended), and `Position` (index
+      paths, all levels, heads not visited). Position/Cases/FreeQ match
+      via the pure matcher, so conditions inside *their* patterns are
+      not evaluated — MatchQ and rule application do evaluate them.
 - [ ] **2.6 Flat/OneIdentity pattern pathologies.** Decide and document
       semantics for the known dark corners (e.g. `f[x_]` matching `a`
       when `f` is `Flat`+`OneIdentity`); conformance tests either way.
@@ -349,9 +358,11 @@ conformance table in `test/wl.test.ts` covers each item below.
       `{...}`/`f[...]`, `e[[...]]` Part syntax, `x_ : d` Optional,
       and the operator table (`; = := ^:= // /. //. -> :> /; : | || &&
       == != < > <= >= /@ @@ + - * / ^ @ !`), with `a/b` and `a-b`
-      compiling through `Times`/`Power`/`Plus`. *Divergences:* no
-      implicit multiplication, no `%`. *Pending:*
-      round-trip property test.
+      compiling through `Times`/`Power`/`Plus`, plus `x_?test` and
+      `##`/`##n`. *Divergences:* no implicit multiplication, no `%`.
+      *Also done:* format→parse round-trip property test over the whole
+      e2e corpus (caught a real divergence: `a - b*c` must fold the -1
+      into the Times, as WL does).
 - [x] **6.2 Formatter**: core result terms print as InputForm with
       precedence-aware parenthesization (`3*(1 + x)`), lists as
       `{...}`, slots/`&`, blanks, strings.

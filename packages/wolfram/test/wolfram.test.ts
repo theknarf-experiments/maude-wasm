@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { formatCore } from "../src/format.js";
 import { compileProgram, evaluateWL } from "../src/index.js";
+import { parse, toCore } from "../src/parser.js";
 
 describe("parser", () => {
   it("compiles definitions and arithmetic", () => {
@@ -146,11 +148,40 @@ const cases: Array<[string, string]> = [
   ['{StringTake["hello", 2], StringTake["hello", -2]}', '{"he", "lo"}'],
   ['{StringTake["hello", {2, 4}], StringDrop["hello", 2]}', '{"ell", "llo"}'],
   ["ToString[foo]", '"foo"'],
+  // conditions and sequence constraints inside replacement rules
+  ["{1, 5, 2, 8} /. x_ /; x > 3 -> big", "{1, big, 2, big}"],
+  ["{1, 5, 2, 8} /. x_?EvenQ :> x * 10", "{1, 5, 20, 80}"],
+  ["{1, 2, 3} /. {x__Integer} :> Plus[x]", "6"],
+  // Replace with level specs; default level {0}
+  ["Replace[x + y, x + y -> done]", "done"],
+  ["{Replace[{x, y}, x -> 0], Replace[{x, y}, x -> 0, 1]}", "{{x, y}, {0, y}}"],
+  ["Replace[{{a}, a}, a -> 0, {2}]", "{{0}, a}"],
+  // Cases level specs and Position
+  ["Cases[{1, {2, {3}}}, _Integer, Infinity]", "{1, 2, 3}"],
+  ["Cases[{1, {2, {3}}}, _Integer, {2}]", "{2}"],
+  ["Position[{a, {b, a}}, a]", "{{1}, {2, 2}}"],
+  ["Position[f[g[1], 2], _Integer]", "{{1, 1}, {2}}"],
 ];
 
 describe("end-to-end Wolfram notation", () => {
   it.each(cases)("%s", async (program, expected) => {
     const { output } = await evaluateWL(program);
     expect(output).toBe(expected);
+  });
+});
+
+// Round-trip property over the whole corpus: parsing the formatter's
+// InputForm output must reproduce the same core term. Fresh unnamed
+// blanks get new counter suffixes on re-parse, so those normalize.
+const normBlanks = (core: string) => core.replace(/\$b\d+/g, "$b");
+
+describe("format/parse round-trip", () => {
+  it.each(cases.map(([src]) => [src] as [string]))("%s", (src) => {
+    for (const ast of parse(src)) {
+      const core = toCore(ast);
+      const reparsed = parse(formatCore(core));
+      expect(reparsed).toHaveLength(1);
+      expect(normBlanks(toCore(reparsed[0]))).toBe(normBlanks(core));
+    }
   });
 });

@@ -394,6 +394,9 @@ fmod WL-EVAL is
   op mkAnd : ArgList -> Expr .
   eq mkAnd(E) = E .
   ceq mkAnd(E :: A) = ap(s('And), E :: A) if lenA(A) >= 1 .
+  op mkCnd : ArgList -> Expr .
+  eq mkCnd(nilA) = s('True) .
+  eq mkCnd(E :: A) = mkAnd(E :: A) .
 
   op wrapCond : Expr ArgList -> Expr .
   eq wrapCond(Rh, nilA) = Rh .
@@ -815,41 +818,107 @@ fmod WL-EVAL is
   eq builtin(st(Ds, At, N), ap(s('ClearAttributes), s(F) :: s(AT)))
     = r(st(Ds, delAt(At, F, AT), N), s('Null)) .
 
-  *** ReplaceAll: expr /. rule(s); outermost, once per subtree; the
-  *** replaced result is re-evaluated (guarded: only when changed)
+  *** rules for /. and //. compile like definitions: lhs Condition /
+  *** PatternTest / sequence constraints hoist into an rhs Condition
+  op compileRule1 : Expr Expr -> Def .
+  ceq compileRule1(L, Rh) = d(compileP(L2), wrapCond(sbE(Rh, B), sbA(Cs, B)))
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) .
   op compileRules : ArgList -> Defs .
-  eq compileRules(ap(s('Rule), L :: Rh)) = d(compileP(L), Rh) | noD .
-  eq compileRules(ap(s('RuleDelayed), L :: Rh)) = d(compileP(L), Rh) | noD .
+  eq compileRules(ap(s('Rule), L :: Rh)) = compileRule1(L, Rh) | noD .
+  eq compileRules(ap(s('RuleDelayed), L :: Rh)) = compileRule1(L, Rh) | noD .
   eq compileRules(ap(s('List), A)) = compileRulesL(A) .
   op compileRulesL : ArgList -> Defs .
   eq compileRulesL(nilA) = noD .
   eq compileRulesL(ap(s('Rule), L :: Rh) :: A)
-    = d(compileP(L), Rh) | compileRulesL(A) .
+    = compileRule1(L, Rh) | compileRulesL(A) .
   eq compileRulesL(ap(s('RuleDelayed), L :: Rh) :: A)
-    = d(compileP(L), Rh) | compileRulesL(A) .
+    = compileRule1(L, Rh) | compileRulesL(A) .
 
-  op rAll : ArgList Defs -> ArgList .
-  op rTry : Expr Defs Defs -> Expr .
-  eq rAll(nilA, Ds) = nilA .
-  eq rAll(E :: A, Ds) = rTry(E, Ds, Ds) :: rAll(A, Ds) .
-  ceq rTry(E, d(P, Rh) | Ds, Ds0) = sbE(Rh, s2b(Sb))
-    if Sb := metaMatch(MOD, P, subj(E), nil, 0) .
-  eq rTry(E, Dd | Ds, Ds0) = rTry(E, Ds, Ds0) [owise] .
-  eq rTry(ap(H, A), noD, Ds0) = ap(rTry(H, Ds0, Ds0), rAll(A, Ds0)) .
-  eq rTry(E, noD, Ds0) = E [owise] .
+  *** state-aware replacement: outermost, once per subtree; rule
+  *** conditions evaluate per match solution, backtracking over
+  *** sequence splits; descend flag false = try this node only
+  var Bo : Bool . var K : Int .
+  op raE : St Expr Defs -> R .
+  op raA : St ArgList Defs -> R .
+  op raT : St Bool Expr Defs Defs -> R .
+  op raLoop : St Bool Expr Term Expr Expr Nat Defs Defs -> R .
+  op raK : St Expr Bool Expr Expr Term Expr Expr Nat Defs Defs -> R .
+  eq raE(S, E, Ds) = raT(S, true, E, Ds, Ds) .
+  ceq raT(S, Bo, E, d(P, ap(s('Condition), Rh :: Cnd)) | Ds, Ds0)
+    = raLoop(S, Bo, E, P, Rh, mkCnd(Cnd), 0, Ds, Ds0) if true .
+  ceq raT(S, Bo, E, d(P, Rh) | Ds, Ds0) = r(S, sbE(Rh, s2b(Sb)))
+    if not isCondRhs(Rh) /\ Sb := metaMatch(MOD, P, subj(E), nil, 0) .
+  eq raT(S, Bo, E, Dd | Ds, Ds0) = raT(S, Bo, E, Ds, Ds0) [owise] .
+  ceq raT(S0, true, ap(H, A), noD, Ds0) = r(S2, ap(HV, AV))
+    if r(S1, HV) := raE(S0, H, Ds0) /\ r(S2, AV) := raA(S1, A, Ds0) .
+  eq raT(S, Bo, E, noD, Ds0) = r(S, E) [owise] .
+  eq raA(S, nilA, Ds0) = r(S, nilA) .
+  ceq raA(S0, E :: A, Ds0) = r(S2, V :: AV)
+    if r(S1, V) := raE(S0, E, Ds0) /\ r(S2, AV) := raA(S1, A, Ds0) .
+  ceq raLoop(S0, Bo, E, P, Rh, Cnd, N, Ds, Ds0)
+    = raK(S1, V, Bo, E, sbE(Rh, s2b(Sb)), P, Rh, Cnd, N, Ds, Ds0)
+    if Sb := metaMatch(MOD, P, subj(E), nil, N) /\
+       r(S1, V) := ev(S0, sbE(Cnd, s2b(Sb))) .
+  eq raLoop(S, Bo, E, P, Rh, Cnd, N, Ds, Ds0) = raT(S, Bo, E, Ds, Ds0) [owise] .
+  eq raK(S, s('True), Bo, E, V2, P, Rh, Cnd, N, Ds, Ds0) = r(S, V2) .
+  eq raK(S, V, Bo, E, V2, P, Rh, Cnd, N, Ds, Ds0)
+    = raLoop(S, Bo, E, P, Rh, Cnd, N + 1, Ds, Ds0) [owise] .
 
-  ceq builtin(S, ap(s('ReplaceAll), E :: E1))
-    = if V == E then r(S, E) else ev(S, V) fi
-    if V := rTry(E, compileRules(E1), compileRules(E1)) .
+  op raFin : St Expr Expr -> R .
+  ceq raFin(S, E, V) = r(S, E) if V == E .
+  ceq raFin(S0, E, V) = ev(S0, V) if V =/= E .
+  ceq builtin(S0, ap(s('ReplaceAll), E :: E1)) = raFin(S1, E, V)
+    if r(S1, V) := raE(S0, E, compileRules(E1)) .
 
-  *** ReplaceRepeated: apply ReplaceAll + evaluate until a fixed point
-  op rrLoop : St ArgList Defs Nat -> R .
+  *** ReplaceRepeated: replace + evaluate until a fixed point
+  op rrLoop : St Expr Defs Nat -> R .
+  op rrK : St Expr Expr Defs Nat -> R .
+  op rrK2 : St Expr Expr Defs Nat -> R .
   eq rrLoop(S, E, Ds, 0) = r(S, E) .
-  ceq rrLoop(S0, E, Ds, s N)
-    = if V2 == E then r(S1, E) else rrLoop(S1, V2, Ds, N) fi
-    if V := rTry(E, Ds, Ds) /\ r(S1, V2) := ev(S0, V) .
+  ceq rrLoop(S0, E, Ds, s N) = rrK(S1, E, V, Ds, N)
+    if r(S1, V) := raE(S0, E, Ds) .
+  ceq rrK(S0, E, V, Ds, N) = rrK2(S1, E, V2, Ds, N)
+    if r(S1, V2) := ev(S0, V) .
+  ceq rrK2(S, E, V2, Ds, N) = r(S, E) if V2 == E .
+  ceq rrK2(S, E, V2, Ds, N) = rrLoop(S, V2, Ds, N) if V2 =/= E .
   eq builtin(S, ap(s('ReplaceRepeated), E :: E1))
     = rrLoop(S, E, compileRules(E1), 1000) .
+
+  *** Replace with level specs; standard specs n / {n} / {a, b} /
+  *** Infinity; default level {0}
+  op lvLo : Expr ~> Int .
+  op lvHi : Expr ~> Int .
+  eq lvLo(I) = 1 .
+  eq lvHi(I) = I .
+  eq lvLo(s('Infinity)) = 1 .
+  eq lvHi(s('Infinity)) = 1000000 .
+  eq lvLo(ap(s('List), I)) = I .
+  eq lvHi(ap(s('List), I)) = I .
+  eq lvLo(ap(s('List), I :: J)) = I .
+  eq lvHi(ap(s('List), I :: J)) = J .
+  eq lvLo(ap(s('List), I :: s('Infinity))) = I .
+  eq lvHi(ap(s('List), I :: s('Infinity))) = 1000000 .
+  op raLev : St Expr Defs Int Int Int -> R .
+  op raLevK : St Expr Expr Defs Int Int Int -> R .
+  op raLevD : St Expr Defs Int Int Int -> R .
+  op raLevA : St ArgList Defs Int Int Int -> R .
+  ceq raLev(S0, E, Ds, I, J, K) = raLevK(S1, E, V, Ds, I, J, K)
+    if K >= I /\ K <= J /\ r(S1, V) := raT(S0, false, E, Ds, Ds) .
+  ceq raLev(S, E, Ds, I, J, K) = raLevD(S, E, Ds, I, J, K)
+    if K < I or K > J .
+  ceq raLevK(S, E, V, Ds, I, J, K) = raLevD(S, E, Ds, I, J, K) if V == E .
+  ceq raLevK(S, E, V, Ds, I, J, K) = r(S, V) if V =/= E .
+  ceq raLevD(S0, ap(H, A), Ds, I, J, K) = r(S1, ap(H, AV))
+    if K < J /\ r(S1, AV) := raLevA(S0, A, Ds, I, J, K + 1) .
+  eq raLevD(S, E, Ds, I, J, K) = r(S, E) [owise] .
+  eq raLevA(S, nilA, Ds, I, J, K) = r(S, nilA) .
+  ceq raLevA(S0, E :: A, Ds, I, J, K) = r(S2, V :: AV)
+    if r(S1, V) := raLev(S0, E, Ds, I, J, K) /\
+       r(S2, AV) := raLevA(S1, A, Ds, I, J, K) .
+  ceq builtin(S0, ap(s('Replace), E :: E1)) = raFin(S1, E, V)
+    if r(S1, V) := raLev(S0, E, compileRules(E1), 0, 0, 0) .
+  ceq builtin(S0, ap(s('Replace), E :: E1 :: E2)) = raFin(S1, E, V)
+    if r(S1, V) := raLev(S0, E, compileRules(E1), lvLo(E2), lvHi(E2), 0) .
 
   *** pattern predicates (rule conditions inside these patterns are not
   *** yet honored - Phase 2 remainder)
@@ -879,9 +948,6 @@ fmod WL-EVAL is
   *** MatchQ hoists the pattern like a definition would and evaluates
   *** the hoisted conditions per match solution (backtracking over
   *** sequence splits until one satisfies them)
-  op mkCnd : ArgList -> Expr .
-  eq mkCnd(nilA) = s('True) .
-  eq mkCnd(E :: A) = mkAnd(E :: A) .
   op matchQLoop : St Term Term Expr Nat -> R .
   op matchQK : St Expr Term Term Expr Nat -> R .
   ceq matchQLoop(S0, P, UM, Cnd, N) = matchQK(S1, V, P, UM, Cnd, N)
@@ -909,6 +975,38 @@ fmod WL-EVAL is
     = if matchesQ(E, L) then E :: casesA(A, L) else casesA(A, L) fi .
   eq builtin(S, ap(s('Cases), ap(H, A) :: E1)) = r(S, ap(s('List), casesA(A, E1))) .
   eq builtin(S, ap(s('Count), ap(H, A) :: E1)) = r(S, lenA(casesA(A, E1))) .
+
+  *** Cases with a level spec: pre-order, matched nodes not descended
+  op casesLev : Expr Expr Int Int Int -> ArgList .
+  op casesLevD : Expr Expr Int Int Int -> ArgList .
+  op casesLevA : ArgList Expr Int Int Int -> ArgList .
+  eq casesLev(E, L, I, J, K)
+    = if K >= I and K <= J and matchesQ(E, L)
+      then E
+      else casesLevD(E, L, I, J, K) fi .
+  ceq casesLevD(ap(H, A), L, I, J, K) = casesLevA(A, L, I, J, K + 1) if K < J .
+  eq casesLevD(E, L, I, J, K) = nilA [owise] .
+  eq casesLevA(nilA, L, I, J, K) = nilA .
+  eq casesLevA(E :: A, L, I, J, K)
+    = casesLev(E, L, I, J, K) :: casesLevA(A, L, I, J, K) .
+  eq builtin(S, ap(s('Cases), ap(H, A) :: E1 :: E2))
+    = r(S, ap(s('List), casesLevA(A, E1, lvLo(E2), lvHi(E2), 1))) .
+
+  *** Position: index paths of matching subexpressions, all levels,
+  *** heads not visited; the whole expression matches at {}
+  op posE : Expr Expr ArgList -> ArgList .
+  op posSub : Expr Expr ArgList -> ArgList .
+  op posA : ArgList NzNat Expr ArgList -> ArgList .
+  eq posE(E, L, A1)
+    = if matchesQ(E, L) then ap(s('List), A1) else nilA fi
+      :: posSub(E, L, A1) .
+  eq posSub(ap(H, A), L, A1) = posA(A, 1, L, A1) .
+  eq posSub(E, L, A1) = nilA [owise] .
+  eq posA(nilA, NZ, L, A1) = nilA .
+  eq posA(E :: A, NZ, L, A1)
+    = posE(E, L, A1 :: NZ) :: posA(A, NZ + 1, L, A1) .
+  eq builtin(S, ap(s('Position), E :: L))
+    = r(S, ap(s('List), posE(E, L, nilA))) .
 
   *** Function application: Function[body][args] with Slot[n], and
   *** Function[{vars}, body][args]. Slots do not reach into nested

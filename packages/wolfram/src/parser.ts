@@ -59,6 +59,7 @@ const OPS = [
   "@",
   ":",
   "!",
+  "?",
   "(",
   ")",
   "[",
@@ -195,6 +196,7 @@ const INFIX: Record<string, [number, number, string]> = {
   "/": [90, 91, "$Divide"],
   "^": [101, 100, "Power"],
   "@": [96, 95, "$Prefix"],
+  "?": [120, 121, "PatternTest"],
 };
 
 class Parser {
@@ -350,15 +352,21 @@ function mkInfix(op: string, lhs: Ast, rhs: Ast): Ast {
         return { kind: "apply", head: sym("Optional"), args: [lhs, rhs] };
       }
       return { kind: "apply", head: sym("Pattern"), args: [lhs, rhs] };
-    case "$Minus":
+    case "$Minus": {
+      // -1 folds into an existing Times, as in WL: a - b*c
+      // parses to Plus[a, Times[-1, b, c]]
+      const negArgs =
+        rhs.kind === "apply" &&
+        rhs.head.kind === "symbol" &&
+        rhs.head.name === "Times"
+          ? [int("-1"), ...rhs.args]
+          : [int("-1"), rhs];
       return {
         kind: "apply",
         head: sym("Plus"),
-        args: [
-          lhs,
-          { kind: "apply", head: sym("Times"), args: [int("-1"), rhs] },
-        ],
+        args: [lhs, { kind: "apply", head: sym("Times"), args: negArgs }],
       };
+    }
     case "$Divide":
       return {
         kind: "apply",
