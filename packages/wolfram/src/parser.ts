@@ -227,7 +227,7 @@ class Parser {
     let lhs = this.parseUnary(minBp);
     for (;;) {
       const t = this.peek();
-      if (!t || t.type !== "op") break;
+      if (t?.type !== "op") break;
       // postfix Function
       if (t.text === "&") {
         if (25 < minBp) break;
