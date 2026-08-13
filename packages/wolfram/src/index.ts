@@ -5,7 +5,7 @@ import { formatCore } from "./format.js";
 import { compileProgram } from "./parser.js";
 
 export { formatCore } from "./format.js";
-export { compileProgram, parse, toCore, tokenize } from "./parser.js";
+export { type Ast, compileProgram, parse, toCore, tokenize } from "./parser.js";
 
 let cachedSource: string | null = null;
 function wlSource(): string {
