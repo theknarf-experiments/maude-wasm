@@ -276,6 +276,7 @@ fmod WL-EVAL is
    && at('Module, 'HoldAll) && at('With, 'HoldAll) && at('Which, 'HoldAll)
    && at('Switch, 'HoldRest) && at('For, 'HoldAll)
    && at('Unset, 'HoldAll) && at('Clear, 'HoldAll)
+   && at('ClearAll, 'HoldAll) && at('Unevaluated, 'HoldAll)
    && at('Block, 'HoldAll) && at('Catch, 'HoldAll)
    && at('Plus, 'Listable) && at('Times, 'Listable)
    && at('Power, 'Listable) && at('Abs, 'Listable)
@@ -520,9 +521,20 @@ fmod WL-EVAL is
   eq ifBr(S, unw(Q, E), Rest) = r(S, unw(Q, E)) .
   eq ifBr(S, V, Rest) = r(S, ap(s('If), V :: Rest)) [owise] .
 
-  eq ev(S, ap(s('SetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
+  *** definitions on Protected symbols are refused
+  op lhsHead : Expr -> Qid .
+  eq lhsHead(s(F)) = F .
+  eq lhsHead(ap(s(F), A)) = F .
+  eq lhsHead(ap(ap(H, A1), A)) = lhsHead(ap(H, A1)) .
+  eq lhsHead(E) = '$noHead [owise] .
+  op protQ : St Expr -> Bool .
+  eq protQ(st(Ds, At, N), L) = hasAttr(At, lhsHead(L), 'Protected) .
+  ceq ev(S, ap(s('SetDelayed), L :: Rh)) = r(S, s('$Failed)) if protQ(S, L) .
+  ceq ev(S, ap(s('SetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null))
+    if not protQ(S, L) .
+  ceq ev(S, ap(s('Set), L :: Rh)) = r(S, s('$Failed)) if protQ(S, L) .
   ceq ev(S0, ap(s('Set), L :: Rh)) = r(addDef(S1, L, V), V)
-    if r(S1, V) := ev(S0, Rh) .
+    if not protQ(S0, L) /\ r(S1, V) := ev(S0, Rh) .
 
   eq ev(S, ap(s('Hold), A)) = r(S, ap(s('Hold), A)) .
   eq ev(S, ap(s('HoldForm), A)) = r(S, ap(s('HoldForm), A)) .
@@ -551,7 +563,7 @@ fmod WL-EVAL is
     if hasAttrE(third(S), HV, 'HoldAll) .
   ceq evArgs(S0, HV, E :: A) = evHeldTail(S0, E, A)
     if hasAttrE(third(S0), HV, 'HoldRest) .
-  ceq evArgs(S0, HV, E :: A) = r(S2, V :: AV)
+  ceq evArgs(S0, HV, E :: A) = evAllC(S2, V, AV)
     if hasAttrE(third(S0), HV, 'HoldFirst) /\
        r(S1, V) := evHeld1(S0, E) /\ r(S2, AV) := evAll(S1, A) .
   eq evArgs(S, HV, A) = evAll(S, A) [owise] .
@@ -573,8 +585,12 @@ fmod WL-EVAL is
     if r(S1, V) := ev(S0, E) .
   op evAllK : St Expr ArgList -> R .
   ceq evAllK(S, V, A) = r(S, V) if isUnw(V) .
-  ceq evAllK(S0, V, A) = r(S1, V :: AV)
+  ceq evAllK(S0, V, A) = evAllC(S1, V, AV)
     if not isUnw(V) /\ r(S1, AV) := evAll(S0, A) .
+  *** an unwind surfacing later in the list propagates alone
+  op evAllC : St Expr ArgList -> R .
+  ceq evAllC(S, V, AV) = r(S, AV) if isUnw(AV) .
+  ceq evAllC(S, V, AV) = r(S, V :: AV) if not isUnw(AV) .
 
   *** held args still honor Evaluate[...]
   op evHeld1 : St Expr -> R .
@@ -587,9 +603,16 @@ fmod WL-EVAL is
   *** normalization pipeline
   op norm : St Expr -> Expr .
   ceq norm(st(Ds, At, N), ap(s(F), A))
-    = ap(s(F), sortIf(At, F, flatIf(At, F, spliceIf(At, F, A))))
+    = ap(s(F), sortIf(At, F, flatIf(At, F, spliceIf(At, F, stripU(A)))))
     if true .
   eq norm(S, E) = E [owise] .
+
+  *** Unevaluated[e] passes e to the head unevaluated; the wrapper is
+  *** stripped here, after argument evaluation, before dispatch
+  op stripU : ArgList -> ArgList .
+  eq stripU(nilA) = nilA .
+  eq stripU(ap(s('Unevaluated), E) :: A) = E :: stripU(A) .
+  eq stripU(E :: A) = E :: stripU(A) [owise] .
 
   op spliceIf : Attrs Qid ArgList -> ArgList .
   eq spliceIf(At, F, A)
@@ -1135,6 +1158,10 @@ fmod WL-EVAL is
   eq dropA(A, 0) = A .
   eq dropA(nilA, N) = nilA .
   ceq dropA(E :: A, s N) = dropA(A, N) if true .
+  *** SlotSequence: ##n becomes Sequence of args n.. and splices in norm
+  ceq slotE(ap(s('SlotSequence), NZ), A) = ap(s('Sequence), dropA(A, N))
+    if s N := NZ .
+
   op partB : ArgList NzNat -> ArgList .
   eq partB(nilA, NZ) = nilA .
   ceq partB(A, NZ) = if lenA(A) >= NZ
@@ -1261,10 +1288,24 @@ fmod WL-EVAL is
   ceq clearSym(d('s[C], Rh) | Ds, Q) = clearSym(Ds, Q)
     if C == symConst(Q) .
   eq clearSym(Dd | Ds, Q) = Dd | clearSym(Ds, Q) [owise] .
+  op clearP : Defs Attrs Qid -> Defs .
+  eq clearP(Ds, At, Q)
+    = if hasAttr(At, Q, 'Protected) then Ds else clearSym(Ds, Q) fi .
   eq builtin(st(Ds, At, N), ap(s('Clear), s(Q)))
-    = r(st(clearSym(Ds, Q), At, N), s('Null)) .
+    = r(st(clearP(Ds, At, Q), At, N), s('Null)) .
   ceq builtin(st(Ds, At, N), ap(s('Clear), s(Q) :: A))
-    = builtin(st(clearSym(Ds, Q), At, N), ap(s('Clear), A)) if lenA(A) >= 1 .
+    = builtin(st(clearP(Ds, At, Q), At, N), ap(s('Clear), A)) if lenA(A) >= 1 .
+
+  *** ClearAll also drops attributes - unless Protected
+  op delAllAt : Attrs Qid -> Attrs .
+  eq delAllAt(at(F, AT) && At, F) = delAllAt(At, F) .
+  eq delAllAt(At, F) = At [owise] .
+  ceq builtin(st(Ds, At, N), ap(s('ClearAll), s(Q)))
+    = r(st(clearSym(Ds, Q), delAllAt(At, Q), N), s('Null))
+    if not hasAttr(At, Q, 'Protected) .
+  ceq builtin(st(Ds, At, N), ap(s('ClearAll), s(Q)))
+    = r(st(Ds, At, N), s('$Failed))
+    if hasAttr(At, Q, 'Protected) .
 
   *** FoldList / FixedPoint
   op foldLB : St Expr Expr ArgList -> R .
@@ -1280,16 +1321,27 @@ fmod WL-EVAL is
     if r(S1, V) := ev(S0, ap(H, E)) .
   eq builtin(S, ap(s('FixedPoint), H :: E)) = fixB(S, H, E, 10000) .
 
-  *** non-local exits
+  *** non-local exits; every Throw carries value + tag as a $TT pair,
+  *** with None standing in for "no tag" - as in WL, `_` matches it
   eq builtin(S, ap(s('Return), nilA)) = r(S, unw('Return, s('Null))) .
   eq builtin(S, ap(s('Return), E)) = r(S, unw('Return, E)) .
   eq builtin(S, ap(s('Break), nilA)) = r(S, unw('Break, s('Null))) .
   eq builtin(S, ap(s('Continue), nilA)) = r(S, unw('Continue, s('Null))) .
-  eq builtin(S, ap(s('Throw), E)) = r(S, unw('Throw, E)) .
+  eq builtin(S, ap(s('Throw), E)) = r(S, unw('Throw, ap(s('$TT), E :: s('None)))) .
+  ceq builtin(S, ap(s('Throw), E :: V)) = r(S, unw('Throw, ap(s('$TT), E :: V)))
+    if true .
   op catchB : St ArgList -> R .
-  eq catchB(S, unw('Throw, E)) = r(S, E) .
+  eq catchB(S, unw('Throw, ap(s('$TT), E :: s('None)))) = r(S, E) .
   eq catchB(S, A) = r(S, A) [owise] .
   ceq builtin(S0, ap(s('Catch), E)) = catchB(S1, V)
+    if r(S1, V) := ev(S0, E) .
+  *** Catch[expr, form] catches throws whose tag matches form
+  op catchT : St ArgList Expr -> R .
+  eq catchT(S, unw('Throw, ap(s('$TT), E :: V)), L)
+    = if matchesQ(V, L) then r(S, E)
+      else r(S, unw('Throw, ap(s('$TT), E :: V))) fi .
+  eq catchT(S, A, L) = r(S, A) [owise] .
+  ceq builtin(S0, ap(s('Catch), E :: L)) = catchT(S1, V, L)
     if r(S1, V) := ev(S0, E) .
 
   *** everyday numerics and strings
@@ -1327,6 +1379,24 @@ fmod WL-EVAL is
   eq builtin(S, ap(s('StringLength), str(Str))) = r(S, length(Str)) .
   eq builtin(S, ap(s('ToString), I)) = r(S, str(string(I, 10))) .
   eq builtin(S, ap(s('ToString), str(Str))) = r(S, str(Str)) .
+  eq builtin(S, ap(s('ToString), s(Q))) = r(S, str(string(Q))) .
+  op charsA : String -> ArgList .
+  ceq charsA(Str) = str(substr(Str, 0, 1)) :: charsA(substr(Str, 1, length(Str)))
+    if length(Str) > 0 .
+  eq charsA(Str) = nilA [owise] .
+  eq builtin(S, ap(s('Characters), str(Str))) = r(S, ap(s('List), charsA(Str))) .
+  ceq builtin(S, ap(s('StringTake), str(Str) :: I)) = r(S, str(substr(Str, 0, I)))
+    if I >= 0 .
+  ceq builtin(S, ap(s('StringTake), str(Str) :: I))
+    = r(S, str(substr(Str, N, length(Str))))
+    if I < 0 /\ N := length(Str) + I .
+  ceq builtin(S, ap(s('StringTake), str(Str) :: ap(s('List), I :: J)))
+    = r(S, str(substr(Str, N, N2)))
+    if N := I + -(1) /\ N2 := (J + 1) + -(I) .
+  ceq builtin(S, ap(s('StringDrop), str(Str) :: I))
+    = r(S, str(substr(Str, I, length(Str)))) if I >= 0 .
+  ceq builtin(S, ap(s('StringDrop), str(Str) :: I)) = r(S, str(substr(Str, 0, N)))
+    if I < 0 /\ N := length(Str) + I .
 
   *** anything else is inert
   eq builtin(S, E) = r(S, E) [owise] .
@@ -1338,7 +1408,8 @@ fmod WL-EVAL is
   eq initialState = st(noD, defaultAttrs, initialFuel) .
 
   op unwrapTop : ArgList -> ArgList .
-  eq unwrapTop(unw(Q, E)) = E .
+  eq unwrapTop(unw('Throw, ap(s('$TT), E :: V))) = E .
+  ceq unwrapTop(unw(Q, E)) = E if Q =/= 'Throw .
   eq unwrapTop(A) = A [owise] .
   op run : ArgList -> Expr .
   ceq run(A) = unwrapTop(V) if r(S, V) := evSeq(initialState, A, s('Null)) .

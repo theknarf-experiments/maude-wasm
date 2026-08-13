@@ -48,6 +48,12 @@ coefSum[t_, x_, n_] := coefFree[t * x^(-1 * n), x];
 coefFree[u_, x_] := u /; FreeQ[u, x];
 coefFree[u_, x_] := 0;
 
+(* protection *)
+SetAttributes[Protect, HoldAll];
+Protect[f_] := SetAttributes[f, Protected];
+SetAttributes[Unprotect, HoldAll];
+Unprotect[f_] := ClearAttributes[f, Protected];
+
 (* list utilities *)
 Riffle[{}, s_] := {};
 Riffle[{x_}, s_] := {x};

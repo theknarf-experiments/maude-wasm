@@ -150,6 +150,13 @@ function fmt(core: Core, parentPrec: number): string {
       ) {
         return core.args[0].value === "1" ? "#" : `#${core.args[0].value}`;
       }
+      if (
+        headSym === "SlotSequence" &&
+        core.args.length === 1 &&
+        core.args[0].kind === "num"
+      ) {
+        return core.args[0].value === "1" ? "##" : `##${core.args[0].value}`;
+      }
       if (headSym === "Function" && core.args.length === 1) {
         return `${fmt(core.args[0], 26)} &`;
       }

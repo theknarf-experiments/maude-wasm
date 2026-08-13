@@ -126,6 +126,26 @@ const cases: Array<[string, string]> = [
   ["Table[i, {i, 3, 5}]", "{3, 4, 5}"],
   ["{{1, 2}, {3, 4}}[[2, 1]]", "3"],
   ["Total[{{1, 2}, {3, 4}}]", "{4, 6}"],
+  // tagged Throw/Catch; unwinds propagate out of argument lists
+  ["Catch[Throw[1, tag], tag]", "1"],
+  ["Catch[Catch[Throw[1, a], b], a]", "1"],
+  ["Catch[2 + Catch[Throw[7, deep], shallow], deep]", "7"],
+  // protection and ClearAll
+  ["SetAttributes[g, Protected]; r = (g = 5); {r, g}", "{$Failed, g}"],
+  ["Protect[p]; Unprotect[p]; p = 3; p", "3"],
+  [
+    "cf[x_] := 1; SetAttributes[cf, Flat]; ClearAll[cf]; {cf[2], Attributes[cf]}",
+    "{cf[2], {}}",
+  ],
+  // Unevaluated and slot sequences
+  ["Length[Unevaluated[1 + 2]]", "2"],
+  ["Plus[##, 10] & [1, 2]", "13"],
+  ["gg[##2] & [1, 2, 3]", "gg[2, 3]"],
+  // strings
+  ['Characters["abc"]', '{"a", "b", "c"}'],
+  ['{StringTake["hello", 2], StringTake["hello", -2]}', '{"he", "lo"}'],
+  ['{StringTake["hello", {2, 4}], StringDrop["hello", 2]}', '{"ell", "llo"}'],
+  ["ToString[foo]", '"foo"'],
 ];
 
 describe("end-to-end Wolfram notation", () => {

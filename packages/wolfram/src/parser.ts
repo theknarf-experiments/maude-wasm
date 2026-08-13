@@ -16,10 +16,11 @@ export type Ast =
       depth: 1 | 2 | 3;
     }
   | { kind: "slot"; index: number }
+  | { kind: "slotseq"; index: number }
   | { kind: "apply"; head: Ast; args: Ast[] };
 
 interface Token {
-  type: "num" | "str" | "sym" | "blank" | "slot" | "op";
+  type: "num" | "str" | "sym" | "blank" | "slot" | "slotseq" | "op";
   text: string;
   name?: string | null;
   head?: string | null;
@@ -106,9 +107,14 @@ export function tokenize(source: string): Token[] {
       continue;
     }
     if (c === "#") {
-      let j = i + 1;
+      const seq = src[i + 1] === "#";
+      let j = i + (seq ? 2 : 1);
+      const start = j;
       while (j < src.length && /[0-9]/.test(src[j])) j++;
-      tokens.push({ type: "slot", text: src.slice(i + 1, j) || "1" });
+      tokens.push({
+        type: seq ? "slotseq" : "slot",
+        text: src.slice(start, j) || "1",
+      });
       i = j;
       continue;
     }
@@ -290,6 +296,7 @@ class Parser {
     if (t.type === "str") return { kind: "string", value: t.text };
     if (t.type === "sym") return sym(t.text);
     if (t.type === "slot") return { kind: "slot", index: Number(t.text) };
+    if (t.type === "slotseq") return { kind: "slotseq", index: Number(t.text) };
     if (t.type === "blank") {
       return {
         kind: "blank",
@@ -416,6 +423,8 @@ export function toCore(ast: Ast): string {
       return `s('${ast.name})`;
     case "slot":
       return `ap(s('Slot), ${ast.index})`;
+    case "slotseq":
+      return `ap(s('SlotSequence), ${ast.index})`;
     case "blank": {
       const name = ast.name ?? `$b${++freshBlank}`;
       if (ast.head) {

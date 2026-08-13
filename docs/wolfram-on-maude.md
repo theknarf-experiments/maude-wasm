@@ -127,12 +127,12 @@ conformance table in `test/wl.test.ts` covers each item below.
       `assoc`/`comm` so Maude's matcher does the work; canonical
       ordering of `Orderless` args on evaluation (define and document
       our canonical order; it will differ from WL's).
-- [~] **1.3 Hold semantics.** *Done:* HoldAll/HoldFirst/HoldRest via
+- [x] **1.3 Hold semantics.** *Done:* HoldAll/HoldFirst/HoldRest via
       the attribute table, `Hold`/`HoldForm` inert, `Evaluate` override
-      in held positions. *Pending:* `Unevaluated` splicing semantics.
-      Original task: Skip argument evaluation per `Hold*`;
-      implement `Hold`, `HoldForm`, `Unevaluated` (argument splicing
-      semantics), `Evaluate` override.
+      in held positions, and `Unevaluated[e]` (HoldAll wrapper stripped
+      after argument evaluation, before dispatch, so
+      `Length[Unevaluated[1 + 2]]` is 2). Divergence: the wrapper does
+      not reappear when the outer expression fails to evaluate.
 - [x] **1.4 `Sequence` splicing** into argument lists (and its
       interaction with `SequenceHold` and `Hold*`).
 - [x] **1.5 Definition ordering.** (Specificity = non-variable node
@@ -234,7 +234,9 @@ conformance table in `test/wl.test.ts` covers each item below.
 - [~] **3.2 `Function`.** *Done:* `Function[{vars}, body][args]`
       (binding via the substitution machinery) and `Function[body]` with
       `Slot[n]` (slots do not reach into nested Function bodies, per
-      WL). *Pending:* `##` slot sequences, `Function` attributes.
+      WL). *Also done:* `Function[x, body]` single-variable form and
+      `##`/`##n` slot sequences (they become `Sequence[...]` and splice
+      in normalization). *Pending:* `Function` attributes.
 - [~] **3.3 Control flow.** *Done:* `CompoundExpression`, `While`
       (fuel-bounded), `Do` (count + single-iterator forms), plus
       iteration combinators `Table`/`Nest`/`NestList`/`Fold`.
@@ -248,14 +250,22 @@ conformance table in `test/wl.test.ts` covers each item below.
       `ev(...)` make Maude re-run the whole sub-evaluation when the
       first guard fails — exponential blowup on recursion; dispatch on
       the evaluated value in a helper op instead.
-- [ ] **3.4 `Throw`/`Catch`** with tags — likely the strategy language
-      or an explicit evaluator continuation encoding; pick after a
-      spike.
+- [x] **3.4 `Throw`/`Catch` with tags.** Every throw carries a
+      `$TT(value, tag)` pair through the `unw` marker (tag `None` when
+      absent — as in WL, `_` matches it); `Catch[e]` absorbs only
+      untagged throws, `Catch[e, form]` pattern-matches the tag and
+      re-propagates on mismatch. Fixed en route: an unwind surfacing in
+      a *non-first* argument used to be consed into the argument list
+      instead of propagating (`2 + Throw[7]` left a naked marker).
 - [~] **3.5 Symbol state.** *Done:* own-values (`x = 5` — symbols
       evaluate through the rulebase; imperative `While` loops over
       mutable symbols work). *Also done:* `Unset` (single definition) and `Clear` (all
       definitions of a symbol, matched on the compiled pattern head).
-      *Pending:* `ClearAll`, `Protected` enforcement, contexts.
+      *Also done:* `ClearAll` (definitions + attributes) and
+      `Protected` enforcement — Set/SetDelayed/Clear/ClearAll refuse
+      with `$Failed` on protected symbols; `Protect`/`Unprotect` live
+      in the stdlib. Builtins ship unprotected on purpose: the stdlib
+      itself extends `Sin`, `Integrate` &c. *Pending:* contexts.
 - [ ] **3.6 Messages**: `Message`, `Quiet`, `Check`, message name
       resolution — plumb through the evaluator as effects in the state
       term.
@@ -278,8 +288,9 @@ conformance table in `test/wl.test.ts` covers each item below.
       the largest pure-library item in the plan; consider deferring
       behind a "machine precision only" milestone.
 - [~] **4.4 Strings.** *Done:* `StringJoin`, `StringLength`,
-      `ToString` (integers/strings). *Pending:* `Characters`,
-      `StringTake`, `StringExpression` (likely: not far).
+      `ToString` (integers/strings/symbols), `Characters`,
+      `StringTake` (positive/negative/`{a, b}` specs), `StringDrop`.
+      *Pending:* `StringExpression`.
 - [ ] **4.5 `Association`** (as ACU map term), `Keys`, `Values`,
       `Lookup`, `KeyDropFrom` etc. — modern WL code is unusable
       without it.
