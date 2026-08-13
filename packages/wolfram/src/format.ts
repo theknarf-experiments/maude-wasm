@@ -245,6 +245,17 @@ function fmt(core: Core, parentPrec: number): string {
                   head: { kind: "symbol", name: "Times" },
                   args: parts,
                 };
+          // a rational coefficient splits across the bar: 1/2 * 1/x
+          // prints as 1/(2*x), as in WL
+          if (
+            num.length === 1 &&
+            num[0].kind === "num" &&
+            num[0].value.includes("/")
+          ) {
+            const [p, q] = num[0].value.split("/");
+            num[0] = { kind: "num", value: p };
+            den.unshift({ kind: "num", value: q });
+          }
           const numCore = num.length === 0 ? one : wrap(num);
           const body = `${fmt(numCore, 90)}/${fmt(wrap(den), 92)}`;
           return parentPrec > 90 ? `(${body})` : body;

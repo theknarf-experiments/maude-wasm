@@ -413,8 +413,13 @@ conformance table in `test/wl.test.ts` covers each item below.
       `1/(3 + x^2)` → `ArcTan[x/Sqrt[3]]/Sqrt[3]` — and even the
       irrational-root case verifies by differentiation because the
       power collector cancels `3^(1/2) * 3^(-1/2)` symbolically.
-      Remaining seam: radical *denesting* (`Sqrt[8]` stays `Sqrt[8]`,
-      not `2*Sqrt[2]`) and `ArcTan` addition formulas.
+      *And denesting:* the largest square divisor comes out of the
+      radical (`Sqrt[8]` → `2*Sqrt[2]`, `Sqrt[8/9]` → `2/3*Sqrt[2]`),
+      supported by a new evaluation rule distributing integer powers
+      over a product's rational coefficient (`(2 x)^2` → `4 x^2`, so
+      `Sqrt[8]^2` is `8` again), and the formatter splits rational
+      coefficients across the fraction bar (`1/(2*x)`, as WL prints
+      it). Remaining seam: `ArcTan` addition formulas.
 
 ## Phase 6 — Parser & frontend — **DONE**
 
@@ -564,7 +569,6 @@ conformance table in `test/wl.test.ts` covers each item below.
 **The plan is implemented.** Every task above is either built (with
 conformance/e2e/property/fuzz coverage — 50 core + 274 wrapper tests)
 or closed by a recorded decision with its divergence documented.
-Future-work seams left deliberately open: radical denesting and
-`ArcTan` addition formulas (5.5), bigfloats (4.3), `StringExpression`
-(4.4), contexts (3.5), and differential testing against a reference
-implementation (7.4).
+Future-work seams left deliberately open: `ArcTan` addition formulas
+(5.5), bigfloats (4.3), `StringExpression` (4.4), contexts (3.5), and
+differential testing against a reference implementation (7.4).

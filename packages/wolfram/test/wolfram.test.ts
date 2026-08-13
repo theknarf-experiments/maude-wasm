@@ -69,6 +69,15 @@ const cases: Array<[string, string]> = [
   ["Integrate[x/(x^2 + 5), x]", "1/2*Log[5 + x^2]"],
   // symbolic square roots and ArcTan
   ["{Sqrt[16], Sqrt[9/4], Sqrt[2], Sqrt[2]^2}", "{4, 3/2, Sqrt[2], 2}"],
+  // radical denesting and numeric-coefficient power distribution
+  [
+    "{Sqrt[8], Sqrt[12], Sqrt[50], Sqrt[15]}",
+    "{2*Sqrt[2], 2*Sqrt[3], 5*Sqrt[2], Sqrt[15]}",
+  ],
+  [
+    "{Sqrt[8]^2, Sqrt[8/9], (2*x)^2, (2*x)^-1}",
+    "{8, 2/3*Sqrt[2], 4*x^2, 1/(2*x)}",
+  ],
   ["{ArcTan[1], D[ArcTan[x], x], N[Pi]}[[2]]", "1/(1 + x^2)"],
   ["Integrate[1/(x^2 + 1), x]", "ArcTan[x]"],
   ["Integrate[1/(x^2 + 2*x + 5), x]", "1/2*ArcTan[1/2 + 1/2*x]"],
@@ -267,6 +276,7 @@ const integrands = [
   "1/(x^2 + 1)",
   "1/(4 + x^2)",
   "1/(3 + x^2)",
+  "1/(8 + x^2)",
   "1/(x^2 + 2*x + 5)",
   "x/(x^2 + 2*x + 5)",
 ];

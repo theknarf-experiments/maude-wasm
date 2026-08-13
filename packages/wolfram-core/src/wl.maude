@@ -907,6 +907,24 @@ fmod WL-EVAL is
   ceq builtin(S, ap(s('Power), N :: 1/2)) = r(S, isqN(N)) if psq(N) .
   ceq builtin(S, ap(s('Power), NZI / NZN :: 1/2)) = r(S, isqN(N) / isqN(N2))
     if NZI > 0 /\ N := NZI /\ N2 := NZN /\ psq(N) /\ psq(N2) .
+  *** denesting: the largest square divisor comes out of the radical,
+  *** so Sqrt of 8 is 2 times Sqrt of 2
+  op sqDiv : Nat Nat -> Nat .
+  eq sqDiv(N, 0) = 1 .
+  ceq sqDiv(N, s N1) = s N1 if (s N1) * (s N1) divides N .
+  eq sqDiv(N, s N1) = sqDiv(N, N1) [owise] .
+  ceq builtin(S, ap(s('Power), N :: 1/2))
+    = r(S, ap(s('Times), N2 :: ap(s('Power), (N quo (N2 * N2)) :: 1/2)))
+    if not psq(N) /\ N2 := sqDiv(N, isqN(N)) /\ N2 > 1 .
+  ceq builtin(S, ap(s('Power), NZI / NZN :: 1/2))
+    = ev(S, ap(s('Times), (1 / isqN(N2)) :: ap(s('Power), N :: 1/2)))
+    if NZI > 0 /\ N := NZI /\ N2 := NZN /\ psq(N2) /\ not psq(N) .
+  *** an integer power distributes over a product's rational
+  *** coefficient, as in WL: {2 x}^2 is 4 x^2
+  ceq builtin(S, ap(s('Power), ap(s('Times), RA :: A) :: J))
+    = ev(S, ap(s('Times), ap(s('Power), RA :: J)
+                 :: ap(s('Power), timesOut(1, A) :: J)))
+    if lenA(A) >= 1 .
   *** an integer power of a rational power collapses, as in WL
   ceq builtin(S, ap(s('Power), ap(s('Power), E :: RA) :: J))
     = builtin(S, ap(s('Power), E :: (RA * J))) if not (RA :: Int) .
