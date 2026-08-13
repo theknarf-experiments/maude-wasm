@@ -63,6 +63,10 @@ const cases: Array<[string, string]> = [
   ["Expand[(x + y)^5] - Expand[(x + y)^5]", "0"],
   ["Expand[(x + y)^8] /. {x -> 1, y -> 1}", "256"],
   ["Integrate[1/((x + 1)*(x + 2)), x]", "Log[1 + x] - Log[2 + x]"],
+  ["Integrate[x^2/(x + 1), x]", "Log[1 + x] - x + 1/2*x^2"],
+  ["Integrate[1/(2 + 3*x + x^2), x]", "Log[1 + x] - Log[2 + x]"],
+  ["Integrate[1/(x^2 + 2*x + 1), x]", "-1/(1 + x)"],
+  ["Integrate[x/(x^2 + 5), x]", "1/2*Log[5 + x^2]"],
   ["GroupBy[Range[6], EvenQ]", "<|False -> {1, 3, 5}, True -> {2, 4, 6}|>"],
   ["{10, 20, 30}[[2]]", "20"],
   [
@@ -242,6 +246,17 @@ const integrands = [
   "x/(x + 1)",
   "x/(2*x + 1)",
   "1/((x + 1)*(x + 2))",
+  // the general rational-functions chapter
+  "x^2/(x + 1)",
+  "x^3/(2*x + 1)",
+  "(x + 3)/((x + 1)*(x + 2))",
+  "x/((x + 1)*(x + 2))",
+  "1/((x + 1)^2*(x + 2))",
+  "1/(2 + 3*x + x^2)",
+  "(2*x + 3)/(2 + 3*x + x^2)",
+  "1/(x^2 - 1)",
+  "x/(x^2 + 5)",
+  "1/(x^2 + 2*x + 1)",
 ];
 
 describe("WolframSession", () => {

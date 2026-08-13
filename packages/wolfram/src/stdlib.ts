@@ -71,6 +71,62 @@ Integrate[((b1_ + x_) * (b2_ + x_))^-1, x_] :=
   (Log[b1 + x] - Log[b2 + x]) * (1/(b2 - b1)) /;
     FreeQ[{b1, b2}, x] && b1 != b2;
 
+(* the general rational-functions chapter ------------------------- *)
+
+(* polynomial division as a recurrence: x^n over a linear factor *)
+Integrate[x_^n_ * (b_ + x_)^-1, x_] :=
+  Integrate[x^(n - 1), x] - b * Integrate[x^(n - 1) * (b + x)^-1, x] /;
+    FreeQ[b, x] && IntegerQ[n] && n >= 2;
+Integrate[x_^n_ * (b_ + a_ * x_)^-1, x_] :=
+  Integrate[x^(n - 1) * (1/a), x] -
+    (b/a) * Integrate[x^(n - 1) * (b + a*x)^-1, x] /;
+    FreeQ[{a, b}, x] && IntegerQ[n] && n >= 2;
+
+(* numerator x over distinct linear factors *)
+Integrate[x_ * (b1_ + x_)^-1 * (b2_ + x_)^-1, x_] :=
+  (-b1/(b2 - b1)) * Log[b1 + x] + (b2/(b2 - b1)) * Log[b2 + x] /;
+    FreeQ[{b1, b2}, x] && b1 != b2;
+Integrate[x_ * ((b1_ + x_) * (b2_ + x_))^-1, x_] :=
+  (-b1/(b2 - b1)) * Log[b1 + x] + (b2/(b2 - b1)) * Log[b2 + x] /;
+    FreeQ[{b1, b2}, x] && b1 != b2;
+
+(* repeated linear factor: p is squared, q is simple *)
+intRep2[p_, q_, x_] :=
+  (Log[q + x] - Log[p + x]) * (1/(q - p)^2) - 1/((q - p)*(p + x));
+Integrate[(p_ + x_)^-2 * (q_ + x_)^-1, x_] :=
+  intRep2[p, q, x] /; FreeQ[{p, q}, x] && p != q;
+Integrate[(q_ + x_)^-1 * (p_ + x_)^-2, x_] :=
+  intRep2[p, q, x] /; FreeQ[{p, q}, x] && p != q;
+Integrate[((q_ + x_) * (p_ + x_)^2)^-1, x_] :=
+  intRep2[p, q, x] /; FreeQ[{p, q}, x] && p != q;
+Integrate[((p_ + x_)^2 * (q_ + x_))^-1, x_] :=
+  intRep2[p, q, x] /; FreeQ[{p, q}, x] && p != q;
+
+(* quadratic denominators with rational roots: factor through the
+   discriminant when it is a perfect square, then recurse into the
+   linear-factor rules; x/(c + x^2) integrates directly to a Log *)
+isq[n_] := Module[{k}, k = 0; While[k*k < n, k = k + 1];
+  If[k*k == n, k, -1]];
+sqDiscQ[b_, c_] :=
+  IntegerQ[b^2 - 4*c] && b^2 - 4*c > 0 && isq[b^2 - 4*c] >= 0;
+quadFac[b_, c_, num_, x_] :=
+  Module[{s, r1, r2}, s = isq[b^2 - 4*c];
+    r1 = (-b - s)/2; r2 = (-b + s)/2;
+    Integrate[num * (x - r1)^-1 * (x - r2)^-1, x]];
+Integrate[(c_ + x_^2 + b_ * x_)^-1, x_] :=
+  quadFac[b, c, 1, x] /; FreeQ[{b, c}, x] && sqDiscQ[b, c];
+Integrate[(c_ + x_^2 + x_)^-1, x_] :=
+  quadFac[1, c, 1, x] /; FreeQ[c, x] && sqDiscQ[1, c];
+Integrate[(c_ + x_^2)^-1, x_] :=
+  quadFac[0, c, 1, x] /; FreeQ[c, x] && sqDiscQ[0, c];
+Integrate[x_ * (c_ + x_^2 + b_ * x_)^-1, x_] :=
+  quadFac[b, c, x, x] /; FreeQ[{b, c}, x] && sqDiscQ[b, c];
+Integrate[x_ * (c_ + x_^2 + x_)^-1, x_] :=
+  quadFac[1, c, x, x] /; FreeQ[c, x] && sqDiscQ[1, c];
+Integrate[x_ * (c_ + x_^2)^-1, x_] := Log[c + x^2] * (1/2) /; FreeQ[c, x];
+Integrate[(c_ + x_^2 + b_ * x_)^-1, x_] :=
+  -1/(x + b/2) /; FreeQ[{b, c}, x] && b^2 - 4*c == 0;
+
 (* fall back to expanding the integrand, retrying once it changes *)
 Integrate[e_, x_] := Integrate[Expand[e], x] /; !(e === Expand[e]);
 

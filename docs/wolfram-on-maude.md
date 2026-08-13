@@ -396,10 +396,17 @@ conformance table in `test/wl.test.ts` covers each item below.
       which exercises D, the chain rules, Together and Expand in one
       loop. *Grown once more:* partial fractions for distinct linear
       factors, in both shapes the parser produces (a product of
-      reciprocals and a reciprocal of a product). Scope boundary, by
-      decision: general rational functions (repeated/quadratic
-      factors, full polynomial division) are future library work — the
-      rule *architecture* they need is all present.
+      reciprocals and a reciprocal of a product). *And the general
+      chapter:* polynomial division as a recurrence (`x^n` over a
+      linear factor), numerator-`x` partial fractions, repeated linear
+      factors, and quadratic denominators with rational roots —
+      factored through a perfect-square discriminant test (`isq` is a
+      WL-level integer square root) and recursion into the
+      linear-factor rules; `x/(c + x^2)` goes straight to a `Log`.
+      All corpus-verified by differentiation. Scope boundary, by
+      decision: irreducible quadratics need `ArcTan` (no inverse trig
+      in the library) and irrational roots need symbolic `Sqrt` —
+      both future seams.
 
 ## Phase 6 — Parser & frontend — **DONE**
 
@@ -549,7 +556,7 @@ conformance table in `test/wl.test.ts` covers each item below.
 **The plan is implemented.** Every task above is either built (with
 conformance/e2e/property/fuzz coverage — 50 core + 274 wrapper tests)
 or closed by a recorded decision with its divergence documented.
-Future-work seams left deliberately open: general rational-function
-integration (5.5), bigfloats (4.3), `StringExpression` (4.4),
-contexts (3.5), and differential testing against a reference
-implementation (7.4).
+Future-work seams left deliberately open: irreducible-quadratic
+integration (needs `ArcTan`/symbolic `Sqrt`, 5.5), bigfloats (4.3),
+`StringExpression` (4.4), contexts (3.5), and differential testing
+against a reference implementation (7.4).
