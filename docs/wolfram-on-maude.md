@@ -208,9 +208,14 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 ## Phase 3 — Scoping, control flow, state
 
-- [ ] **3.1 `Module`** (lexical, renaming with fresh symbols — capture
-      avoidance machinery at the metalevel), **`Block`** (dynamic),
-      **`With`** (substitution).
+- [~] **3.1 Scoping.** *Done:* `Module` (lexical — locals renamed to
+      fresh symbols suffixed with the self-decremented fuel value, so
+      nesting and recursion are collision-free; initializers evaluate
+      outside the scope) and `With` (evaluated-initializer
+      substitution). *Pending:* `Block` (dynamic scoping needs
+      save/restore of own-value definitions around the body); Module
+      locals persist as leaked temporaries like WL's Temporary symbols
+      but are never garbage-collected.
 - [~] **3.2 `Function`.** *Done:* `Function[{vars}, body][args]`
       (binding via the substitution machinery) and `Function[body]` with
       `Slot[n]` (slots do not reach into nested Function bodies, per
@@ -218,15 +223,17 @@ conformance table in `test/wl.test.ts` covers each item below.
 - [~] **3.3 Control flow.** *Done:* `CompoundExpression`, `While`
       (fuel-bounded), `Do` (count + single-iterator forms), plus
       iteration combinators `Table`/`Nest`/`NestList`/`Fold`.
-      *Pending:* `For`, `Switch`, `Which`, `Return`, `Break`,
-      `Continue`.
+      *Also done:* `For`, `Switch` (via MatchQ), `Which`.
+      *Pending:* `Return`, `Break`, `Continue` (need non-local exit —
+      likely an interrupt-style payload threaded through R).
 - [ ] **3.4 `Throw`/`Catch`** with tags — likely the strategy language
       or an explicit evaluator continuation encoding; pick after a
       spike.
 - [~] **3.5 Symbol state.** *Done:* own-values (`x = 5` — symbols
       evaluate through the rulebase; imperative `While` loops over
-      mutable symbols work). *Pending:* `Unset`, `Clear` vs `ClearAll`,
-      `Protected` enforcement, contexts.
+      mutable symbols work). *Also done:* `Unset` (single definition) and `Clear` (all
+      definitions of a symbol, matched on the compiled pattern head).
+      *Pending:* `ClearAll`, `Protected` enforcement, contexts.
 - [ ] **3.6 Messages**: `Message`, `Quiet`, `Check`, message name
       resolution — plumb through the evaluator as effects in the state
       term.
@@ -252,8 +259,8 @@ conformance table in `test/wl.test.ts` covers each item below.
 
 - [~] **5.1 Structural.** *Done:* `Map`, `Apply`, `Range`, `First`,
       `Rest`, `Total`, `Fold`, `Nest`, `NestList`, `Select`, `Flatten`
-      (all levels), `Join`, `Table` (single iterator). *Pending:*
-      `MapThread`, `Thread`, `FoldList`, `NestWhile`, `FixedPoint`,
+      (all levels), `Join`, `Table` (single iterator). *Also done:* `FoldList`,
+      `FixedPoint`. *Pending:* `MapThread`, `Thread`, `NestWhile`,
       `Sort` (with ordering functions), `GroupBy`, `Partition`,
       `Transpose`, `Riffle`, `Tuples`, multi-iterator `Table`.
 - [ ] **5.2 `Listable` threading** over lists (and mixed list/scalar).

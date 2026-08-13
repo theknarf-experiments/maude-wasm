@@ -319,6 +319,64 @@ const cases: Array<[string, string, string]> = [
      ap(s('area), ap(s('disk), 3))`,
     "ap(s('Times), 9 :: s('Pi))",
   ],
+  [
+    "Module scoping: locals isolated, nesting collision-free",
+    `ap(s('Set), s('x) :: 100) ::
+     ap(s('Module), ap(s('List), ap(s('Set), s('x) :: 1)) ::
+       ap(s('Set), s('x) :: ap(s('Plus), s('x) :: 5))) ::
+     ap(s('List), s('x) ::
+       ap(s('Module), ap(s('List), ap(s('Set), s('a) :: 2)) ::
+         ap(s('Module), ap(s('List), ap(s('Set), s('a) :: 3)) ::
+           ap(s('Times), s('a) :: 10))))`,
+    "ap(s('List), 100 :: 30)",
+  ],
+  [
+    "With substitutes evaluated initializers",
+    `ap(s('With), ap(s('List), ap(s('Set), s('y) :: ap(s('Plus), 2 :: 3))) ::
+       ap(s('Times), s('y) :: s('y)))`,
+    "25",
+  ],
+  [
+    "Which and Switch",
+    `ap(s('List),
+       ap(s('Which), s('False) :: 1 :: s('True) :: 2 :: s('True) :: 3) ::
+       ap(s('Switch), ap(s('List), 1 :: 2) ::
+         ?h('x, 'Integer) :: str("int") ::
+         ap(s('List), ?? 'r) :: str("list") ::
+         ? 'x :: str("other")))`,
+    'ap(s(\'List), 2 :: str("list"))',
+  ],
+  [
+    "For loop computes a factorial",
+    `ap(s('For),
+       ap(s('Set), s('j) :: 1) ::
+       ap(s('LessEqual), s('j) :: 4) ::
+       ap(s('Set), s('j) :: ap(s('Plus), s('j) :: 1)) ::
+       ap(s('Set), s('f4) :: ap(s('Times),
+         ap(s('If), ap(s('Equal), s('j) :: 1) :: 1 :: s('f4)) :: s('j)))) ::
+     s('f4)`,
+    "24",
+  ],
+  [
+    "Unset removes one definition; Clear removes all for a symbol",
+    `ap(s('Set), ap(s('g), 1) :: 10) ::
+     ap(s('Set), ap(s('g), 2) :: 20) ::
+     ap(s('Unset), ap(s('g), 1)) ::
+     ap(s('SetDelayed), ap(s('h), ? 'x) :: 99) ::
+     ap(s('Clear), s('h)) ::
+     ap(s('List), ap(s('g), 1) :: ap(s('g), 2) :: ap(s('h), 5))`,
+    "ap(s('List), ap(s('g), 1) :: 20 :: ap(s('h), 5))",
+  ],
+  [
+    "FoldList and FixedPoint",
+    `ap(s('List),
+       ap(s('FoldList), s('Plus) :: 0 :: ap(s('List), 1 :: 2 :: 3)) ::
+       ap(s('FixedPoint), ap(s('Function), ap(s('If),
+         ap(s('Greater), ap(s('Slot), 1) :: 10) ::
+         ap(s('Slot), 1) ::
+         ap(s('Times), ap(s('Slot), 1) :: 2))) :: 1))`,
+    "ap(s('List), ap(s('List), 0 :: 1 :: 3 :: 6) :: 16)",
+  ],
 ];
 
 describe("WL/M conformance", () => {

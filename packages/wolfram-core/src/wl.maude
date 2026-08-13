@@ -250,7 +250,10 @@ fmod WL-EVAL is
    && at('Condition, 'HoldAll) && at('PatternTest, 'HoldRest)
    && at('RuleDelayed, 'HoldRest) && at('Function, 'HoldAll)
    && at('While, 'HoldAll) && at('Do, 'HoldAll) && at('Table, 'HoldAll)
-   && at('TagSetDelayed, 'HoldAll) && at('UpSetDelayed, 'HoldAll) .
+   && at('TagSetDelayed, 'HoldAll) && at('UpSetDelayed, 'HoldAll)
+   && at('Module, 'HoldAll) && at('With, 'HoldAll) && at('Which, 'HoldAll)
+   && at('Switch, 'HoldRest) && at('For, 'HoldAll)
+   && at('Unset, 'HoldAll) && at('Clear, 'HoldAll) .
 
   *** ---------------------------------------------------- definitions
   *** definition identity is (pattern, condition): conditional
@@ -382,6 +385,7 @@ fmod WL-EVAL is
        Rh2 := wrapCond(sbE(Rh, B), sbA(Cs, B)) .
   var L2 : Expr . var Cs Cs1 Cs2 : ArgList .
   var B1 B2 : Bnds . var N1 N2 : Nat . var Q2 : Qid . var Rh2 : Expr .
+  var Ini Inc Body : Expr . var C : Constant . var NeTL : NeTermList .
 
   *** ---------------------------------------------------- evaluator
   op ev : St Expr -> R .
@@ -761,6 +765,91 @@ fmod WL-EVAL is
   *** builtins already gives up-value behavior (1.6 approximation)
   eq builtin(S, ap(s('TagSetDelayed), s(F) :: L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
   eq builtin(S, ap(s('UpSetDelayed), L :: Rh)) = r(addDef(S, L, Rh), s('Null)) .
+
+  *** Which / Switch / For
+  op whichB : St ArgList -> R .
+  eq whichB(S, nilA) = r(S, s('Null)) .
+  ceq whichB(S0, Cnd :: E :: A)
+    = if V == s('True) then ev(S1, E) else whichB(S1, A) fi
+    if r(S1, V) := ev(S0, Cnd) .
+  eq builtin(S, ap(s('Which), A)) = whichB(S, A) .
+
+  op switchB : St Expr ArgList -> R .
+  eq switchB(S, E, nilA) = r(S, s('Null)) .
+  eq switchB(S, E, L :: V :: A)
+    = if matchesQ(E, L) then ev(S, V) else switchB(S, E, A) fi .
+  eq builtin(S, ap(s('Switch), E :: A)) = switchB(S, E, A) .
+
+  op forB : St Expr Expr Expr -> R .
+  op forStep : St Expr Expr Expr -> R .
+  ceq forB(S0, Cnd, Inc, Body)
+    = if V == s('True) then forStep(S1, Cnd, Inc, Body) else r(S1, s('Null)) fi
+    if r(S1, V) := ev(S0, Cnd) .
+  eq forStep(st(Ds, At, 0), Cnd, Inc, Body) = r(st(Ds, At, 0), s('$Aborted)) .
+  ceq forStep(st(Ds, At, s N), Cnd, Inc, Body) = forB(S2, Cnd, Inc, Body)
+    if r(S1, V) := ev(st(Ds, At, N), Body) /\ r(S2, V2) := ev(S1, Inc) .
+  ceq builtin(S0, ap(s('For), Ini :: Cnd :: Inc :: Body)) = forB(S1, Cnd, Inc, Body)
+    if r(S1, V) := ev(S0, Ini) .
+
+  *** With: definition-time substitution; Module: rename to fresh
+  *** symbols suffixed with the (unique, self-decremented) fuel value
+  sort WR .
+  op wres : St Bnds -> WR [ctor] .
+  op wb : St ArgList -> WR .
+  eq wb(S, nilA) = wres(S, noBnds) .
+  ceq wb(S0, ap(s('Set), s(Q) :: Ini) :: A) = wres(S2, bnd(Q, V) & B)
+    if r(S1, V) := ev(S0, Ini) /\ wres(S2, B) := wb(S1, A) .
+  ceq builtin(S0, ap(s('With), ap(s('List), A1) :: Body)) = ev(S1, sbE(Body, B))
+    if wres(S1, B) := wb(S0, A1) .
+
+  op mv : Qid Nat -> Qid .
+  eq mv(Q, N) = qid(string(Q) + "$" + string(N, 10)) .
+  op modBnds : ArgList Nat -> Bnds .
+  eq modBnds(nilA, N) = noBnds .
+  eq modBnds(s(Q) :: A, N) = bnd(Q, s(mv(Q, N))) & modBnds(A, N) .
+  eq modBnds(ap(s('Set), s(Q) :: Ini) :: A, N) = bnd(Q, s(mv(Q, N))) & modBnds(A, N) .
+  op modInits : ArgList Nat -> ArgList .
+  eq modInits(nilA, N) = nilA .
+  eq modInits(s(Q) :: A, N) = modInits(A, N) .
+  eq modInits(ap(s('Set), s(Q) :: Ini) :: A, N)
+    = ap(s('Set), s(mv(Q, N)) :: Ini) :: modInits(A, N) .
+  ceq builtin(st(Ds, At, s N), ap(s('Module), ap(s('List), A1) :: Body))
+    = evSeq(st(Ds, At, N), modInits(A1, N) :: sbE(Body, modBnds(A1, N)), s('Null))
+    if true .
+
+  *** Unset / Clear
+  op unsetDef : St Expr -> St .
+  ceq unsetDef(st(Ds, At, N), L) = st(delDef(Ds, P, nilA), At, N)
+    if hpc(L2, Cs, B, N1) := hoistE(L, 0) /\ P := compileP(L2) .
+  eq builtin(S, ap(s('Unset), L)) = r(unsetDef(S, L), s('Null)) .
+
+  op symConst : Qid -> Constant .
+  eq symConst(Q) = qid("'" + string(Q) + ".Qid") .
+  op clearSym : Defs Qid -> Defs .
+  eq clearSym(noD, Q) = noD .
+  ceq clearSym(d('ap['s[C], NeTL], Rh) | Ds, Q) = clearSym(Ds, Q)
+    if C == symConst(Q) .
+  ceq clearSym(d('s[C], Rh) | Ds, Q) = clearSym(Ds, Q)
+    if C == symConst(Q) .
+  eq clearSym(Dd | Ds, Q) = Dd | clearSym(Ds, Q) [owise] .
+  eq builtin(st(Ds, At, N), ap(s('Clear), s(Q)))
+    = r(st(clearSym(Ds, Q), At, N), s('Null)) .
+  ceq builtin(st(Ds, At, N), ap(s('Clear), s(Q) :: A))
+    = builtin(st(clearSym(Ds, Q), At, N), ap(s('Clear), A)) if lenA(A) >= 1 .
+
+  *** FoldList / FixedPoint
+  op foldLB : St Expr Expr ArgList -> R .
+  eq foldLB(S, H, E, nilA) = r(S, E) .
+  ceq foldLB(S0, H, E, E1 :: A) = r(S2, E :: AV)
+    if r(S1, V) := ev(S0, ap(H, E :: E1)) /\ r(S2, AV) := foldLB(S1, H, V, A) .
+  ceq builtin(S0, ap(s('FoldList), H :: E :: ap(E1, A))) = r(S1, ap(s('List), AV))
+    if r(S1, AV) := foldLB(S0, H, E, A) .
+  op fixB : St Expr Expr Nat -> R .
+  eq fixB(S, H, E, 0) = r(S, E) .
+  ceq fixB(S0, H, E, s N)
+    = if V == E then r(S1, E) else fixB(S1, H, V, N) fi
+    if r(S1, V) := ev(S0, ap(H, E)) .
+  eq builtin(S, ap(s('FixedPoint), H :: E)) = fixB(S, H, E, 10000) .
 
   *** anything else is inert
   eq builtin(S, E) = r(S, E) [owise] .
